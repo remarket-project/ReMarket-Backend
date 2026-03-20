@@ -1,0 +1,21 @@
+__pycache__
+app.egg-info
+*.pyc
+.mypy_cache
+.coverage
+htmlcov
+.cache
+.venv
+.env
+
+# Thư mục upload ảnh local (để không push ảnh rác lên git)
+uploads/
+
+# IDE & Testing
+.pytest_cache/
+.vscode/
+.idea/
+
+# File hệ điều hành
+.DS_Store
+Thumbs.db
