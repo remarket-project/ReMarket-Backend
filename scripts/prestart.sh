@@ -4,5 +4,5 @@ set -e
 set -x
 
 # Run all pre-start tasks (DB check, migrations, seeding)
-python app/backend_pre_start.py
+python -m app.backend_pre_start
 

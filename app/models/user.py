@@ -6,12 +6,19 @@ Handles user accounts, profiles, and trust scores.
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from pydantic import EmailStr
 from sqlalchemy import DateTime
 from sqlmodel import Field, Relationship, SQLModel
 
 from .enums import UserRole
+
+if TYPE_CHECKING:
+    from app.models.listing import Listing
+    from app.models.offer import Offer
+    from app.models.order import Order
+    from app.models.review import Review
 
 
 def get_datetime_utc() -> datetime:
@@ -119,9 +126,31 @@ class User(UserBase, table=True):
         sa_type=DateTime(timezone=True),
     )
 
-    # Relationships (sẽ thêm sau)
-    items: list["Item"] = Relationship(
-        back_populates="owner", cascade_delete=True)
+    # Relationships
+    listings: list["Listing"] = Relationship(
+        back_populates="seller", cascade_delete=True)
+    offers_made: list["Offer"] = Relationship(
+        back_populates="buyer", cascade_delete=True)
+    orders_as_buyer: list["Order"] = Relationship(
+        back_populates="buyer",
+        cascade_delete=True,
+        sa_relationship_kwargs={"foreign_keys": "Order.buyer_id"}
+    )
+    orders_as_seller: list["Order"] = Relationship(
+        back_populates="seller",
+        cascade_delete=True,
+        sa_relationship_kwargs={"foreign_keys": "Order.seller_id"}
+    )
+    reviews_given: list["Review"] = Relationship(
+        back_populates="reviewer",
+        cascade_delete=True,
+        sa_relationship_kwargs={"foreign_keys": "Review.reviewer_id"}
+    )
+    reviews_received: list["Review"] = Relationship(
+        back_populates="reviewee",
+        cascade_delete=True,
+        sa_relationship_kwargs={"foreign_keys": "Review.reviewee_id"}
+    )
 
 
 # ============================================================================
@@ -145,39 +174,6 @@ class Token(SQLModel):
 class NewPassword(SQLModel):
     token: str
     new_password: str = Field(min_length=8, max_length=128)
-
-
-class ItemBase(SQLModel):
-    title: str = Field(min_length=1, max_length=255)
-    description: str | None = Field(default=None, max_length=255)
-
-
-class ItemCreate(ItemBase):
-    pass
-
-
-class ItemUpdate(ItemBase):
-    title: str | None = Field(default=None, min_length=1, max_length=255)
-
-
-class Item(ItemBase, table=True):
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    created_at: datetime | None = Field(
-        default_factory=get_datetime_utc, sa_type=DateTime(timezone=True))
-    owner_id: uuid.UUID = Field(
-        foreign_key="users.id", nullable=False, ondelete="CASCADE")
-    owner: User | None = Relationship(back_populates="items")
-
-
-class ItemPublic(ItemBase):
-    id: uuid.UUID
-    owner_id: uuid.UUID
-    created_at: datetime | None = None
-
-
-class ItemsPublic(SQLModel):
-    data: list[ItemPublic]
-    count: int
 
 
 # ============================================================================

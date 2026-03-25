@@ -75,7 +75,7 @@ async def register(data: UserRegister, session: SessionDep) -> TokenResponse:
         subject=str(user.id),
         expires_delta=access_token_expires
     )
-    refresh_token = create_refresh_token()
+    refresh_token = create_refresh_token(subject=str(user.id))
 
     # Store hashed refresh token
     await crud_user.update_user_refresh_token(session, user.id, refresh_token)
@@ -130,7 +130,7 @@ async def login(session: SessionDep, credentials: Annotated[OAuth2PasswordReques
         )
 
     # Verify password
-    is_valid, _ = verify_password(credentials.password, user.password_hash)
+    is_valid = verify_password(credentials.password, user.password_hash)
     if not is_valid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -144,7 +144,7 @@ async def login(session: SessionDep, credentials: Annotated[OAuth2PasswordReques
         subject=str(user.id),
         expires_delta=access_token_expires
     )
-    refresh_token = create_refresh_token()
+    refresh_token = create_refresh_token(subject=str(user.id))
 
     # Store hashed refresh token
     await crud_user.update_user_refresh_token(session, user.id, refresh_token)
@@ -186,14 +186,16 @@ async def refresh_access_token(
     **Errors:**
     - 401: Invalid or expired refresh token
     """
-    # Decode and verify refresh token structure (doesn't validate signature)
-    # In real scenario, you might store refresh tokens in Redis with expiry
+    # Decode and verify refresh token JWT
     try:
         payload = jwt.decode(
             req.refresh_token,
             settings.SECRET_KEY,
             algorithms=["HS256"]
         )
+        # Verify token type
+        if payload.get("type") != "refresh":
+            raise ValueError("Invalid token type")
         user_id = uuid.UUID(payload.get("sub", ""))
     except (InvalidTokenError, ValueError):
         raise HTTPException(
@@ -223,7 +225,7 @@ async def refresh_access_token(
         subject=str(user.id),
         expires_delta=access_token_expires
     )
-    new_refresh_token = create_refresh_token()
+    new_refresh_token = create_refresh_token(subject=str(user.id))
 
     # Update refresh token (invalidate old one)
     await crud_user.update_user_refresh_token(session, user.id, new_refresh_token)

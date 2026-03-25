@@ -54,11 +54,32 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
+# Copy pyproject.toml and install dependencies
 COPY pyproject.toml .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -e .
+# Install all dependencies including dev
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir \
+    fastapi[standard]>=0.114.2 \
+    python-multipart>=0.0.7 \
+    email-validator>=2.1.0.post1 \
+    tenacity>=8.2.3 \
+    pydantic>2.0 \
+    emails>=0.6 \
+    jinja2>=3.1.4 \
+    alembic>=1.12.1 \
+    httpx>=0.25.1 \
+    psycopg[binary]>=3.1.13 \
+    sqlmodel>=0.0.21 \
+    pydantic-settings>=2.2.1 \
+    sentry-sdk[fastapi]>=2.0.0 \
+    pyjwt>=2.8.0 \
+    pwdlib[argon2,bcrypt]>=0.3.0 \
+    python-jose[cryptography]>=3.3.0 \
+    passlib[bcrypt]>=1.7.4 \
+    asyncpg>=0.29.0 \
+    slowapi>=0.1.9 \
+    uvicorn[standard]>=0.24.0
 
 # Production image
 FROM python:3.10-slim

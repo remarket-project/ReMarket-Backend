@@ -9,6 +9,14 @@ from app.models.category import (
     CategoryUpdate,
     CategoryWithChildren,
 )
+from app.models.listing import (
+    Listing,
+    ListingImage,
+)
+from app.models.offer import Offer
+from app.models.order import Order
+from app.models.review import Review
+from app.models.notification import Notification
 from app.models.enums import (
     ConditionGrade,
     ListingStatus,
@@ -31,12 +39,6 @@ from app.models.user import (
     Message,
     Token,
     NewPassword,
-    Item,
-    ItemBase,
-    ItemCreate,
-    ItemUpdate,
-    ItemPublic,
-    ItemsPublic,
 )
 
 __all__ = [
@@ -50,6 +52,12 @@ __all__ = [
     "CategoryPublic",
     "CategoryUpdate",
     "CategoryWithChildren",
+    "Listing",
+    "ListingImage",
+    "Offer",
+    "Order",
+    "Review",
+    "Notification",
     # Schemas
     "UserCreate",
     "UserRegister",
@@ -63,12 +71,6 @@ __all__ = [
     "Message",
     "Token",
     "NewPassword",
-    "Item",
-    "ItemBase",
-    "ItemCreate",
-    "ItemUpdate",
-    "ItemPublic",
-    "ItemsPublic",
     # Enums
     "UserRole",
     "ListingStatus",

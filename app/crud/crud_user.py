@@ -4,25 +4,39 @@ CRUD operations for User model.
 Pure database operations (no business logic).
 """
 import uuid
+from typing import Optional
 
-from sqlmodel import Session, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
-from app.models import User, UserCreate, UserRegister
+from app.models import User, UserCreate, UserRegister, UserUpdate
 from app.core.security import get_password_hash, hash_token
 
 
-async def get_user_by_email(db: Session, email: str) -> User | None:
+async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
     """Get user by email. Returns None if not found."""
-    statement = select(User).where(User.email == email)
-    return db.exec(statement).first()
+    result = await db.execute(select(User).where(User.email == email))
+    return result.scalar_one_or_none()
 
 
-async def get_user_by_id(db: Session, user_id: uuid.UUID) -> User | None:
+async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> Optional[User]:
     """Get user by ID. Returns None if not found."""
-    return db.get(User, user_id)
+    result = await db.execute(select(User).where(User.id == user_id))
+    return result.scalar_one_or_none()
 
 
-async def create_user(db: Session, user_in: UserCreate | UserRegister) -> User:
+async def get_user_by_refresh_token(
+    db: AsyncSession,
+    hashed_token: str
+) -> Optional[User]:
+    """Find user by their hashed refresh token."""
+    result = await db.execute(
+        select(User).where(User.hashed_refresh_token == hashed_token)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_user(db: AsyncSession, user_in: UserCreate | UserRegister) -> User:
     """
     Create a new user in database.
 
@@ -40,45 +54,47 @@ async def create_user(db: Session, user_in: UserCreate | UserRegister) -> User:
         phone=getattr(user_in, 'phone', None)
     )
     db.add(user)
-    db.commit()
-    db.refresh(user)
+    await db.commit()
+    await db.refresh(user)
     return user
 
 
-async def update_user(db: Session, user: User, user_in) -> User:
+async def update_user(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    user_in: UserUpdate
+) -> Optional[User]:
     """
     Update existing user.
 
     Args:
         db: Database session
-        user: Existing User object
+        user_id: User ID to update
         user_in: Data to update
 
     Returns:
         Updated User object
     """
-    from app.models import UserUpdate
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        return None
 
-    if isinstance(user_in, UserUpdate):
-        update_data = user_in.model_dump(exclude_unset=True)
-    else:
-        update_data = user_in.model_dump(
-            exclude_unset=True, exclude="password")
-        if "password" in user_in and user_in.password:
-            update_data["password_hash"] = get_password_hash(user_in.password)
+    update_data = user_in.model_dump(exclude_unset=True)
 
     for field, value in update_data.items():
         if hasattr(user, field) and value is not None:
             setattr(user, field, value)
 
     db.add(user)
-    db.commit()
-    db.refresh(user)
+    await db.commit()
+    await db.refresh(user)
     return user
 
 
 async def update_user_refresh_token(
-    db: Session, user_id: uuid.UUID, refresh_token: str | None
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    refresh_token: Optional[str]
 ) -> None:
     """
     Update user's refresh token (hashed).
@@ -95,16 +111,56 @@ async def update_user_refresh_token(
         else:
             user.hashed_refresh_token = None
         db.add(user)
-        db.commit()
+        await db.commit()
 
 
-async def get_users(db: Session, skip: int = 0, limit: int = 100) -> list[User]:
-    """Get list of users with pagination."""
-    statement = select(User).offset(skip).limit(limit)
-    return db.exec(statement).all()
+async def mark_user_email_verified(
+    db: AsyncSession,
+    email: str
+) -> Optional[User]:
+    """Mark user email as verified."""
+    user = await get_user_by_email(db, email)
+    if not user:
+        return None
+
+    user.is_email_verified = True
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
 
 
-async def get_users_count(db: Session) -> int:
+async def get_users_list(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 100
+) -> list[User]:
+    """Get paginated list of users."""
+    result = await db.execute(
+        select(User).offset(skip).limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def update_user_status(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    is_active: bool
+) -> Optional[User]:
+    """Update user active status."""
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        return None
+
+    user.is_active = is_active
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def get_users_count(db: AsyncSession) -> int:
     """Get total count of users."""
-    statement = select(User)
-    return len(db.exec(statement).all())
+    from sqlalchemy import func
+    result = await db.execute(select(func.count()).select_from(User))
+    return result.scalar_one()

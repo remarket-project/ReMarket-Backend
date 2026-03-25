@@ -5,10 +5,13 @@ Handles product categories using a tree structure (parent_id).
 """
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from sqlalchemy import DateTime
 from sqlmodel import Field, Relationship, SQLModel
+
+if TYPE_CHECKING:
+    from app.models.listing import Listing
 
 
 def get_datetime_utc() -> datetime:
@@ -71,6 +74,7 @@ class Category(CategoryBase, table=True):
         sa_relationship_kwargs=dict(remote_side="Category.id")
     )
     children: list["Category"] = Relationship(back_populates="parent")
+    listings: list["Listing"] = Relationship(back_populates="category")
 
 
 # ============================================================================

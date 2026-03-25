@@ -1,4 +1,7 @@
-from collections.abc import Generator
+"""
+API dependencies - shared dependencies for all routes.
+"""
+from collections.abc import AsyncGenerator
 from typing import Annotated, TypeAlias
 import uuid
 
@@ -7,12 +10,15 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
-from sqlmodel import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import security
 from app.core.config import settings
-from app.core.db import engine
-from app.models import TokenPayload, User, UserRole
+from app.crud import crud_user
+from app.db.session import AsyncSessionLocal
+from app.models import User
+from app.models.enums import UserRole
+from app.schemas.auth import TokenPayload
 
 # OAuth2 scheme - points to login endpoint
 reusable_oauth2 = OAuth2PasswordBearer(
@@ -24,13 +30,13 @@ reusable_oauth2 = OAuth2PasswordBearer(
 # Database Session
 # ============================================================================
 
-def get_db() -> Generator[Session, None, None]:
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """Get database session."""
-    with Session(engine) as session:
+    async with AsyncSessionLocal() as session:
         yield session
 
 
-SessionDep: TypeAlias = Annotated[Session, Depends(get_db)]
+SessionDep: TypeAlias = Annotated[AsyncSession, Depends(get_db)]
 TokenDep: TypeAlias = Annotated[str, Depends(reusable_oauth2)]
 
 
@@ -38,7 +44,10 @@ TokenDep: TypeAlias = Annotated[str, Depends(reusable_oauth2)]
 # Current User
 # ============================================================================
 
-def get_current_user(session: SessionDep, token: TokenDep) -> User:
+async def get_current_user(
+    session: SessionDep,
+    token: TokenDep
+) -> User:
     """
     Get current authenticated user from JWT token.
 
@@ -57,7 +66,7 @@ def get_current_user(session: SessionDep, token: TokenDep) -> User:
         )
 
     user_id = uuid.UUID(token_data.sub)
-    user = session.get(User, user_id)
+    user = await crud_user.get_user_by_id(session, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if not user.is_active:
@@ -72,7 +81,7 @@ CurrentUser: TypeAlias = Annotated[User, Depends(get_current_user)]
 # Admin User
 # ============================================================================
 
-def get_current_admin(current_user: CurrentUser) -> User:
+async def get_current_admin(current_user: CurrentUser) -> User:
     """
     Get current authenticated user, verify they are admin.
 
@@ -88,11 +97,3 @@ def get_current_admin(current_user: CurrentUser) -> User:
 
 
 CurrentAdmin: TypeAlias = Annotated[User, Depends(get_current_admin)]
-
-
-def get_current_active_superuser(current_user: CurrentUser) -> User:
-    if current_user.role != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=403, detail="The user doesn't have enough privileges"
-        )
-    return current_user
