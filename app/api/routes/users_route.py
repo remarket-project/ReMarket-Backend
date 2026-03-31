@@ -8,9 +8,14 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import CurrentUser, SessionDep, CurrentAdmin
+from app.core.security import (
+    verify_password,
+    get_password_hash,
+)
 from app.crud import crud_user
 from app.models import User, UserUpdate, UserPrivate, UserPublic, UsersPublic
 from app.schemas.user import UserUpdate as UserUpdateSchema
+from app.schemas.auth import ChangePasswordRequest, MessageResponse
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -69,8 +74,61 @@ async def update_my_profile(
     **Errors:**
     - 401: Unauthorized
     """
-    updated_user = await crud_user.update_user(session, current_user, data)
+    updated_user = await crud_user.update_user(session, current_user.id, data)
     return updated_user
+
+
+# ============================================================================
+# Change Password
+# ============================================================================
+
+@router.put(
+    "/me/password",
+    response_model=MessageResponse,
+    summary="Change password",
+    description="Change the current user's password."
+)
+async def change_password(
+    data: ChangePasswordRequest,
+    current_user: CurrentUser,
+    session: SessionDep
+) -> MessageResponse:
+    """
+    Change current user's password.
+
+    **Request body:**
+    - current_password: Current password for verification
+    - new_password: New password (min 8 characters)
+    - confirm_password: Confirm new password (must match new_password)
+
+    **Response:**
+    - Success message
+
+    **Errors:**
+    - 400: Current password incorrect or new passwords don't match
+    - 401: Unauthorized
+    """
+    # Verify passwords match
+    if data.new_password != data.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New passwords do not match"
+        )
+
+    # Verify current password
+    if not verify_password(data.current_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect"
+        )
+
+    # Update password
+    user = await crud_user.get_user_by_id(session, current_user.id)
+    user.password_hash = get_password_hash(data.new_password)
+    session.add(user)
+    await session.commit()
+
+    return MessageResponse(message="Password changed successfully")
 
 
 # ============================================================================

@@ -7,8 +7,10 @@ from datetime import timedelta
 from typing import Any, Annotated
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.api.deps import CurrentUser, SessionDep, TokenDep
 from app.core.config import settings
@@ -19,16 +21,19 @@ from app.core.security import (
     hash_token,
     verify_token_hash,
     verify_password,
+    create_email_verification_token,
+    decode_email_verification_token,
 )
 from app.crud import crud_user
 from app.models import User, UserRole, TokenPayload
-from app.schemas.auth import RefreshTokenRequest, TokenResponse, MessageResponse
+from app.schemas.auth import RefreshTokenRequest, TokenResponse, MessageResponse, VerifyEmailRequest
 from app.models import UserRegister
 
 import jwt
 from jwt.exceptions import InvalidTokenError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 # ============================================================================
@@ -42,7 +47,8 @@ router = APIRouter(prefix="/auth", tags=["auth"])
     summary="Register a new user",
     description="Create a new user account and return JWT tokens."
 )
-async def register(data: UserRegister, session: SessionDep) -> TokenResponse:
+@limiter.limit("3/hour")
+async def register(request: Request, data: UserRegister, session: SessionDep) -> TokenResponse:
     """
     Register a new user account.
 
@@ -80,6 +86,15 @@ async def register(data: UserRegister, session: SessionDep) -> TokenResponse:
     # Store hashed refresh token
     await crud_user.update_user_refresh_token(session, user.id, refresh_token)
 
+    # Send verification email (if needed)
+    verification_token = create_email_verification_token(user.email)
+    # TODO: Implement send_verify_email from services
+    # await send_verify_email(
+    #     to_email=user.email,
+    #     full_name=user.full_name,
+    #     verification_token=verification_token,
+    # )
+
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -97,7 +112,8 @@ async def register(data: UserRegister, session: SessionDep) -> TokenResponse:
     summary="User login",
     description="Authenticate user and return JWT tokens. Compatible with OAuth2 password flow."
 )
-async def login(session: SessionDep, credentials: Annotated[OAuth2PasswordRequestForm, Depends()]) -> TokenResponse:
+@limiter.limit("5/15minutes")
+async def login(request: Request, session: SessionDep, credentials: Annotated[OAuth2PasswordRequestForm, Depends()]) -> TokenResponse:
     """
     User login with email and password.
 
@@ -127,6 +143,13 @@ async def login(session: SessionDep, credentials: Annotated[OAuth2PasswordReques
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User account is inactive"
+        )
+
+    # Check if email is verified
+    if not user.is_email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please verify your email before logging in"
         )
 
     # Verify password
@@ -266,3 +289,52 @@ async def logout(
     await crud_user.update_user_refresh_token(session, current_user.id, None)
 
     return {"message": "Successfully logged out"}
+
+
+# ============================================================================
+# Verify Email
+# ============================================================================
+
+@router.post(
+    "/verify-email",
+    status_code=status.HTTP_200_OK,
+    summary="Verify user email",
+    description="Verify user email using signed verification token."
+)
+async def verify_email(
+    data: VerifyEmailRequest,
+    session: SessionDep
+) -> MessageResponse:
+    """
+    Verify user email using signed verification token.
+
+    **Request body:**
+    - token: Email verification token (sent in verification email)
+
+    **Response:**
+    - 200 OK with success message
+
+    **Errors:**
+    - 400: Invalid or expired token
+    - 404: User not found
+    """
+    email = decode_email_verification_token(data.token)
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification token"
+        )
+
+    user = await crud_user.get_user_by_email(session, email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    if user.is_email_verified:
+        return MessageResponse(message="Email already verified")
+
+    await crud_user.mark_user_email_verified(session, user.id)
+
+    return MessageResponse(message="Email verified successfully")

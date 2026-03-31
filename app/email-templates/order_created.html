@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+  <body style="font-family: Arial, sans-serif; color: #222; line-height: 1.6">
+    <h2>Đơn hàng được tạo</h2>
+    <p>Xin chào {{ full_name }},</p>
+    {% if role == "buyer" %}
+    <p>Đơn hàng của bạn đã được tạo thành công.</p>
+    {% else %}
+    <p>Bạn nhận được một đơn hàng mới cho bài đăng của bạn.</p>
+    {% endif %}
+    <ul>
+      <li>ID Đơn hàng: {{ order_id }}</li>
+      <li>Bài đăng: {{ listing_title }}</li>
+      <li>Giá: {{ final_price }}</li>
+    </ul>
+  </body>
+</html>

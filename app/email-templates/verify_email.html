@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+  <body style="font-family: Arial, sans-serif; color: #222; line-height: 1.6">
+    <h2>Xác minh email của bạn</h2>
+    <p>Xin chào {{ full_name }},</p>
+    <p>Cảm ơn bạn đã tạo tài khoản trên {{ project_name }}.</p>
+    <p>Vui lòng xác minh email của bạn bằng cách nhấp vào nút dưới đây:</p>
+    <p>
+      <a
+        href="{{ verification_url }}"
+        style="
+          display: inline-block;
+          padding: 10px 16px;
+          background: #2563eb;
+          color: #fff;
+          text-decoration: none;
+          border-radius: 6px;
+        "
+      >
+        Xác Minh Email
+      </a>
+    </p>
+    <p>Liên kết này hết hạn trong {{ expires_hours }} giờ.</p>
+  </body>
+</html>

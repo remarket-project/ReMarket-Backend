@@ -15,6 +15,10 @@ from app.core.config import settings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Create services directory if it doesn't exist
+_services_dir = Path(__file__).parent / "services"
+_services_dir.mkdir(parents=True, exist_ok=True)
+
 
 @dataclass
 class EmailData:

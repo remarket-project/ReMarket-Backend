@@ -164,3 +164,66 @@ async def get_users_count(db: AsyncSession) -> int:
     from sqlalchemy import func
     result = await db.execute(select(func.count()).select_from(User))
     return result.scalar_one()
+
+
+async def update_user_ratings(db: AsyncSession, user_id: uuid.UUID) -> Optional[User]:
+    """
+    Update user ratings based on reviews received.
+    Recalculates rating_avg, rating_count, and trust_score.
+
+    Args:
+        db: Database session
+        user_id: User ID to calculate ratings for
+
+    Returns:
+        Updated User object or None if user not found
+    """
+    from sqlalchemy import func
+    from app.models import Review
+
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        return None
+
+    # Calculate average rating from all reviews where this user is the reviewee
+    result = await db.execute(
+        select(
+            func.avg(Review.rating).label("avg_rating"),
+            func.count(Review.id).label("review_count")
+        ).where(Review.reviewee_id == user_id)
+    )
+    row = result.one()
+    avg_rating = row.avg_rating or 0
+    review_count = row.review_count or 0
+
+    # Update user ratings
+    user.rating_avg = round(float(avg_rating), 2) if avg_rating else 0.0
+    user.rating_count = review_count
+
+    # Calculate trust_score based on:
+    # - Rating average (0-5)
+    # - Completed orders (at least 5 for higher trust)
+    # - Is email verified
+    completed_orders_result = await db.execute(
+        select(func.count()).select_from(__import__(
+            'app.models', fromlist=['Order']).Order)
+        .where(
+            (__import__('app.models', fromlist=['Order']).Order.seller_id == user_id) &
+            (__import__('app.models', fromlist=[
+             'Order']).Order.status == 'COMPLETED')
+        )
+    )
+    completed_orders = completed_orders_result.scalar_one() or 0
+
+    # Trust score calculation: (rating/5) * 0.6 + min(completed_orders/10, 1) * 0.3 + is_email_verified * 0.1
+    trust_score = (
+        (user.rating_avg / 5.0) * 0.6 +
+        min(completed_orders / 10.0, 1.0) * 0.3 +
+        (0.1 if user.is_email_verified else 0)
+    )
+    user.trust_score = round(trust_score * 100, 1)  # Convert to percentage
+
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user

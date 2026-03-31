@@ -1,6 +1,12 @@
+from app.crud import crud_offer
+from app.db.session import AsyncSessionLocal
+from app.db.init_db import init_db
+from app.core.config import settings
+from app.api.main import api_router
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import sentry_sdk
 from fastapi import FastAPI, APIRouter
@@ -10,11 +16,11 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
-from app.api.main import api_router
-from app.core.config import settings
-from app.db.init_db import init_db
-from app.db.session import AsyncSessionLocal
-from app.crud import crud_offer
+# Create services directory on app startup
+_services_dir = Path(__file__).parent / "services"
+_services_dir.mkdir(parents=True, exist_ok=True)
+(_services_dir / "__init__.py").touch()
+
 
 logger = logging.getLogger(__name__)
 offer_expiry_task: asyncio.Task | None = None

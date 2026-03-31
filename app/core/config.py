@@ -135,6 +135,9 @@ class Settings(BaseSettings):
     FIRST_SUPERUSER: EmailStr | None = None
     FIRST_SUPERUSER_PASSWORD: str | None = None
 
+    # File Upload
+    UPLOAD_DIR: str = "uploads"
+
     def _check_default_secret(self, var_name: str, value: str | None) -> None:
         if value == "changethis":
             message = (

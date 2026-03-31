@@ -42,3 +42,31 @@ class ListingRead(ListingBase):
 
 class ListingWithDetails(ListingRead):
     pass
+
+
+class ListingImageRead(BaseModel):
+    """Response schema for listing images"""
+    id: uuid.UUID
+    listing_id: uuid.UUID
+    image_url: str
+    is_primary: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ListingWithImages(ListingRead):
+    """Response schema for listing with images"""
+    images: List[ListingImageRead] = []
+
+    model_config = {"from_attributes": True}
+
+
+class ListingPaginated(BaseModel):
+    """Response schema for paginated listings"""
+    items: List[ListingRead] = []
+    total: int
+    skip: int
+    limit: int
+
+    model_config = {"from_attributes": True}

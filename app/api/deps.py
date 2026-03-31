@@ -7,7 +7,7 @@ import uuid
 
 import jwt
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,10 +20,8 @@ from app.models import User
 from app.models.enums import UserRole
 from app.schemas.auth import TokenPayload
 
-# OAuth2 scheme - points to login endpoint
-reusable_oauth2 = OAuth2PasswordBearer(
-    tokenUrl=f"{settings.API_V1_STR}/auth/login"
-)
+# HTTPBearer scheme - simple Bearer token authentication
+http_bearer = HTTPBearer()
 
 
 # ============================================================================
@@ -36,8 +34,13 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+async def get_token(credentials=Depends(http_bearer)) -> str:
+    """Extract Bearer token from credentials."""
+    return credentials.credentials
+
+
 SessionDep: TypeAlias = Annotated[AsyncSession, Depends(get_db)]
-TokenDep: TypeAlias = Annotated[str, Depends(reusable_oauth2)]
+TokenDep: TypeAlias = Annotated[str, Depends(get_token)]
 
 
 # ============================================================================

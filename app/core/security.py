@@ -121,3 +121,17 @@ def decode_password_reset_token(token: str) -> str | None:
         return email
     except Exception:
         return None
+
+
+def decode_access_token(token: str) -> dict[str, Any]:
+    """Decode access token and return payload."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY,
+                             algorithms=[ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        return {"error": "Token has expired"}
+    except jwt.InvalidTokenError:
+        return {"error": "Invalid token"}
+    except Exception as e:
+        return {"error": str(e)}
