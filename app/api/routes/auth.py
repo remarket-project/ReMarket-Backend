@@ -23,11 +23,22 @@ from app.core.security import (
     verify_password,
     create_email_verification_token,
     decode_email_verification_token,
+    create_password_reset_token,
+    decode_password_reset_token,
 )
 from app.crud import crud_user
 from app.models import User, UserRole, TokenPayload
-from app.schemas.auth import RefreshTokenRequest, TokenResponse, MessageResponse, VerifyEmailRequest
+from app.schemas.auth import (
+    RefreshTokenRequest,
+    TokenResponse,
+    MessageResponse,
+    VerifyEmailRequest,
+    ResendVerificationRequest,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+)
 from app.models import UserRegister
+from app.services.email_service import send_password_reset_email
 
 import jwt
 from jwt.exceptions import InvalidTokenError
@@ -335,6 +346,166 @@ async def verify_email(
     if user.is_email_verified:
         return MessageResponse(message="Email already verified")
 
-    await crud_user.mark_user_email_verified(session, user.id)
+    await crud_user.mark_user_email_verified(session, email)
 
     return MessageResponse(message="Email verified successfully")
+
+
+# ============================================================================
+# Resend Verification Email
+# ============================================================================
+
+@router.post(
+    "/resend-verification",
+    status_code=status.HTTP_200_OK,
+    summary="Resend verification email",
+    description="Resend email verification link to user."
+)
+@limiter.limit("3/hour")
+async def resend_verification(
+    request: Request,
+    data: ResendVerificationRequest,
+    session: SessionDep
+) -> MessageResponse:
+    """
+    Resend email verification link.
+
+    **Request body:**
+    - email: User email
+
+    **Response:**
+    - 200 OK with success message
+
+    **Errors:**
+    - 400: Email already verified or user inactive
+    - 404: User not found
+    """
+    user = await crud_user.get_user_by_email(session, data.email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User account is inactive"
+        )
+
+    if user.is_email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already verified"
+        )
+
+    # Generate new verification token
+    verification_token = create_email_verification_token(user.email)
+
+    # Send verification email
+    from app.services.email_service import send_verify_email
+    await send_verify_email(
+        to_email=user.email,
+        full_name=user.full_name,
+        verification_token=verification_token
+    )
+
+    return MessageResponse(message="Verification email sent successfully")
+
+
+# ============================================================================
+# Forgot Password
+# ============================================================================
+
+@router.post(
+    "/forgot-password",
+    status_code=status.HTTP_200_OK,
+    summary="Request password reset",
+    description="Send password reset link to user email."
+)
+@limiter.limit("3/hour")
+async def forgot_password(
+    request: Request,
+    data: ForgotPasswordRequest,
+    session: SessionDep
+) -> MessageResponse:
+    """
+    Request password reset.
+
+    **Request body:**
+    - email: User email
+
+    **Response:**
+    - 200 OK (always returns success for security)
+
+    **Note:**
+    Always returns success even if email not found (security best practice).
+    """
+    user = await crud_user.get_user_by_email(session, data.email)
+
+    # Always return success for security (don't leak user existence)
+    if user and user.is_active:
+        # Generate password reset token
+        reset_token = create_password_reset_token(user.email)
+
+        # Send password reset email
+        await send_password_reset_email(
+            to_email=user.email,
+            full_name=user.full_name,
+            reset_token=reset_token
+        )
+
+    return MessageResponse(message="If your email is registered, you will receive a password reset link")
+
+
+# ============================================================================
+# Reset Password
+# ============================================================================
+
+@router.post(
+    "/reset-password",
+    status_code=status.HTTP_200_OK,
+    summary="Reset password with token",
+    description="Reset user password using reset token from email."
+)
+async def reset_password(
+    data: ResetPasswordRequest,
+    session: SessionDep
+) -> MessageResponse:
+    """
+    Reset password using token.
+
+    **Request body:**
+    - token: Password reset token (from email)
+    - new_password: New password (min 12 chars, must meet complexity requirements)
+
+    **Response:**
+    - 200 OK with success message
+
+    **Errors:**
+    - 400: Invalid or expired token
+    - 404: User not found
+    """
+    # Decode token to get email
+    email = decode_password_reset_token(data.token)
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token"
+        )
+
+    # Find user by email
+    user = await crud_user.get_user_by_email(session, email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Hash new password
+    new_password_hash = get_password_hash(data.new_password)
+
+    # Update password (this also invalidates refresh token)
+    await crud_user.update_user_password(session, user.id, new_password_hash)
+
+    return MessageResponse(message="Password reset successfully. Please login with your new password.")

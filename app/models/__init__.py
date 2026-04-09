@@ -17,6 +17,8 @@ from app.models.offer import Offer
 from app.models.order import Order
 from app.models.review import Review
 from app.models.notification import Notification
+from app.models.wallet import Wallet, WalletTransaction
+from app.models.escrow import Escrow
 from app.models.enums import (
     ConditionGrade,
     ListingStatus,
@@ -24,6 +26,8 @@ from app.models.enums import (
     OfferStatus,
     OrderStatus,
     UserRole,
+    TransactionType,
+    EscrowStatus,
 )
 from app.models.user import (
     User,
@@ -58,6 +62,9 @@ __all__ = [
     "Order",
     "Review",
     "Notification",
+    "Wallet",
+    "WalletTransaction",
+    "Escrow",
     # Schemas
     "UserCreate",
     "UserRegister",
@@ -78,4 +85,6 @@ __all__ = [
     "OfferStatus",
     "OrderStatus",
     "NotificationType",
+    "TransactionType",
+    "EscrowStatus",
 ]

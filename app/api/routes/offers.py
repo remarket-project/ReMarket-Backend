@@ -12,7 +12,7 @@ from app.models.listing import Listing
 from app.models.order import Order
 from app.models.enums import OfferStatus, ListingStatus, OrderStatus, NotificationType
 from app.schemas.offer import OfferCreate, OfferRead, OfferStatusUpdate
-from app.crud import crud_notification, crud_offer
+from app.crud import crud_notification, crud_offer, crud_escrow, crud_wallet
 
 router = APIRouter(prefix="/offers", tags=["Offers"])
 limiter = Limiter(key_func=get_remote_address)
@@ -175,7 +175,12 @@ async def update_offer_status(
 
     previous_status = offer.status
     try:
-        updated_offer, rejected_offers = await crud_offer.update_offer_status(db, offer_id, status_update)
+        updated_offer, rejected_offers = await crud_offer.update_offer_status(
+            db,
+            offer_id,
+            status_update.status,
+            counter_price=status_update.offer_price,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -191,6 +196,20 @@ async def update_offer_status(
 
         listing.status = ListingStatus.SOLD
         db.add(listing)
+
+        # Auto-create escrow for newly created order if missing.
+        await db.flush()
+        existing_escrow = await crud_escrow.get_escrow_by_order_id(db, order.id)
+        if not existing_escrow:
+            buyer_wallet = await crud_wallet.get_or_create_wallet(db, offer.buyer_id)
+            seller_wallet = await crud_wallet.get_or_create_wallet(db, listing.seller_id)
+            await crud_escrow.create_escrow(
+                db=db,
+                order_id=order.id,
+                amount=offer.offer_price,
+                buyer_wallet_id=buyer_wallet.id,
+                seller_wallet_id=seller_wallet.id,
+            )
 
     await db.commit()
     await db.refresh(updated_offer)

@@ -168,8 +168,9 @@ async def get_offers_by_listing(
 async def update_offer_status(
     db: AsyncSession,
     offer_id: uuid.UUID,
-    new_status: OfferStatus
-) -> Offer:
+    new_status: OfferStatus,
+    counter_price=None,
+) -> tuple[Offer, list[Offer]]:
     """Update offer status."""
     result = await db.execute(select(Offer).where(Offer.id == offer_id))
     offer = result.scalar_one_or_none()
@@ -177,23 +178,36 @@ async def update_offer_status(
     if not offer:
         raise ValueError("Offer not found")
 
+    rejected_offers: list[Offer] = []
+
+    if new_status == OfferStatus.COUNTERED:
+        if counter_price is None:
+            raise ValueError("Countered offer requires counter price")
+        offer.offer_price = counter_price
+
     offer.status = new_status
     offer.updated_at = utc_now()
 
     # If accepting, reject other pending offers on same listing
     if new_status == OfferStatus.ACCEPTED:
-        await db.execute(
-            update(Offer)
+        reject_result = await db.execute(
+            select(Offer)
             .where(
                 and_(
                     Offer.listing_id == offer.listing_id,
                     Offer.id != offer.id,
-                    Offer.status.in_(
-                        [OfferStatus.PENDING, OfferStatus.COUNTERED])
+                    Offer.status.in_([
+                        OfferStatus.PENDING,
+                        OfferStatus.COUNTERED,
+                    ]),
                 )
             )
-            .values(status=OfferStatus.REJECTED)
+            .with_for_update(nowait=False)
         )
+        rejected_offers = list(reject_result.scalars().all())
+        for rejected_offer in rejected_offers:
+            rejected_offer.status = OfferStatus.REJECTED
+            rejected_offer.updated_at = utc_now()
 
         # Mark listing as sold
         await db.execute(
@@ -205,4 +219,4 @@ async def update_offer_status(
     db.add(offer)
     await db.commit()
     await db.refresh(offer)
-    return offer
+    return offer, rejected_offers

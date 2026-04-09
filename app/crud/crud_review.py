@@ -45,6 +45,19 @@ async def get_review_by_order(
     return result.scalar_one_or_none()
 
 
+async def get_reviews_by_order(
+    db: AsyncSession,
+    order_id: uuid.UUID
+) -> list[Review]:
+    """Get all reviews for an order (typically buyer and seller reviews)."""
+    result = await db.execute(
+        select(Review)
+        .where(Review.order_id == order_id)
+        .order_by(Review.created_at.asc())
+    )
+    return list(result.scalars().all())
+
+
 async def get_review_by_order_and_reviewer(
     db: AsyncSession,
     order_id: uuid.UUID,

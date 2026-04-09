@@ -11,6 +11,8 @@ from app.api.routes import (
     admin,
     notifications,
     websocket,
+    wallet,
+    escrow,
 )
 from app.core.config import settings
 
@@ -32,6 +34,16 @@ api_router.include_router(orders.router)
 api_router.include_router(reviews.router)
 api_router.include_router(admin.router)
 api_router.include_router(notifications.router)
+
+# ============================================================================
+# Wallet Route
+# ============================================================================
+api_router.include_router(wallet.router)
+
+# ============================================================================
+# Escrow Route
+# ============================================================================
+api_router.include_router(escrow.router)
 
 # ============================================================================
 # WebSocket Route

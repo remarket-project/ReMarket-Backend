@@ -99,6 +99,28 @@ class TokenResponse(BaseModel):
     user: UserPrivate
 
 
+class ResendVerificationRequest(BaseModel):
+    """Dữ liệu gửi lên khi gửi lại email xác minh"""
+    email: EmailStr
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Dữ liệu gửi lên khi quên mật khẩu"""
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Dữ liệu gửi lên khi đặt lại mật khẩu"""
+    token: str
+    new_password: str = Field(
+        min_length=12, description="Mật khẩu mới: 12+ ký tự, 1 in hoa, 1 thường, 1 số, 1 ký tự đặc biệt")
+
+    @field_validator('new_password')
+    @classmethod
+    def validate_new_password(cls, v: str) -> str:
+        return validate_password_complexity(v)
+
+
 class MessageResponse(BaseModel):
     """Generic response message."""
     message: str

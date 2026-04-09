@@ -19,7 +19,9 @@ from slowapi.errors import RateLimitExceeded
 # Create services directory on app startup
 _services_dir = Path(__file__).parent / "services"
 _services_dir.mkdir(parents=True, exist_ok=True)
-(_services_dir / "__init__.py").touch()
+_services_init = _services_dir / "__init__.py"
+if not _services_init.exists():
+    _services_init.touch()
 
 
 logger = logging.getLogger(__name__)

@@ -157,6 +157,63 @@ async def get_category_by_slug(slug: str, session: SessionDep) -> CategoryWithCh
 
 
 # ============================================================================
+# Get Category by ID (Public)
+# ============================================================================
+
+@router.get(
+    "/id/{category_id:uuid}",
+    response_model=CategoryWithChildren,
+    summary="Get category by ID",
+    description="Get category details and its subcategories by UUID."
+)
+async def get_category_by_id(
+    category_id: uuid.UUID,
+    session: SessionDep
+) -> CategoryWithChildren:
+    """
+    Get category by UUID with its children.
+
+    **Path parameters:**
+    - category_id: Category UUID
+
+    **Response:**
+    - Category details with nested children
+
+    **Errors:**
+    - 404: Category not found
+    """
+    category = await crud_category.get_category_by_id(session, category_id)
+    if not category:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Category not found"
+        )
+
+    children = await crud_category.get_categories_by_parent(session, category.id)
+
+    return CategoryWithChildren(
+        id=category.id,
+        name=category.name,
+        slug=category.slug,
+        icon_url=category.icon_url,
+        parent_id=category.parent_id,
+        created_at=category.created_at,
+        children=[
+            CategoryWithChildren(
+                id=child.id,
+                name=child.name,
+                slug=child.slug,
+                icon_url=child.icon_url,
+                parent_id=child.parent_id,
+                created_at=child.created_at,
+                children=[]
+            )
+            for child in children
+        ]
+    )
+
+
+# ============================================================================
 # Admin: Create Category
 # ============================================================================
 

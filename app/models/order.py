@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from .listing import Listing
     from .user import User
     from .review import Review
+    from .escrow import Escrow
 
 
 class Order(SQLModel, table=True):
@@ -52,3 +53,4 @@ class Order(SQLModel, table=True):
     reviews: list["Review"] = Relationship(
         back_populates="order", cascade_delete=True
     )
+    escrow: "Escrow" = Relationship(back_populates="order")

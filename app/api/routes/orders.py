@@ -6,7 +6,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.api.deps import CurrentUser, SessionDep
-from app.crud import crud_listing, crud_notification, crud_order, crud_user
+from app.crud import crud_escrow, crud_listing, crud_notification, crud_order, crud_user, crud_wallet
 from app.models.enums import ListingStatus, OrderStatus, NotificationType
 from app.models.user import User
 from app.schemas.order import OrderDirectCreate, OrderRead, OrderStatusUpdate
@@ -39,6 +39,19 @@ async def create_direct_order(
         order, rejected_offers = await crud_order.create_direct_order(db, current_user.id, listing)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    # Auto-create escrow for direct order flow.
+    existing_escrow = await crud_escrow.get_escrow_by_order_id(db, order.id)
+    if not existing_escrow:
+        buyer_wallet = await crud_wallet.get_or_create_wallet(db, current_user.id)
+        seller_wallet = await crud_wallet.get_or_create_wallet(db, listing.seller_id)
+        await crud_escrow.create_escrow(
+            db=db,
+            order_id=order.id,
+            amount=order.final_price,
+            buyer_wallet_id=buyer_wallet.id,
+            seller_wallet_id=seller_wallet.id,
+        )
 
     # Gửi email
     buyer = await crud_user.get_user_by_id(db, current_user.id)

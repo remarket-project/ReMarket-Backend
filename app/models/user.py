@@ -6,7 +6,7 @@ Handles user accounts, profiles, and trust scores.
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from pydantic import EmailStr
 from sqlalchemy import DateTime
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from app.models.offer import Offer
     from app.models.order import Order
     from app.models.review import Review
+    from app.models.wallet import Wallet
 
 
 def get_datetime_utc() -> datetime:
@@ -127,6 +128,7 @@ class User(UserBase, table=True):
     )
 
     # Relationships
+    wallet: Optional["Wallet"] = Relationship(back_populates="user")
     listings: list["Listing"] = Relationship(
         back_populates="seller", cascade_delete=True)
     offers_made: list["Offer"] = Relationship(

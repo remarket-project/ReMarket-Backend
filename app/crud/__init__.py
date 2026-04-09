@@ -7,6 +7,8 @@ from app.crud import (
     crud_order,
     crud_review,
     crud_user,
+    crud_wallet,
+    crud_escrow,
 )
 
 __all__ = [
@@ -17,4 +19,6 @@ __all__ = [
     "crud_order",
     "crud_review",
     "crud_user",
+    "crud_wallet",
+    "crud_escrow",
 ]

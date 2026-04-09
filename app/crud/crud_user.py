@@ -114,6 +114,35 @@ async def update_user_refresh_token(
         await db.commit()
 
 
+async def update_user_password(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    new_password_hash: str
+) -> Optional[User]:
+    """
+    Update user's password.
+
+    Args:
+        db: Database session
+        user_id: User ID
+        new_password_hash: New password hash
+
+    Returns:
+        Updated User object or None if user not found
+    """
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        return None
+
+    user.password_hash = new_password_hash
+    # Invalidate refresh token for security
+    user.hashed_refresh_token = None
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
 async def mark_user_email_verified(
     db: AsyncSession,
     email: str

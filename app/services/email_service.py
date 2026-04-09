@@ -38,6 +38,26 @@ async def send_verify_email(to_email: str, full_name: str, verification_token: s
     )
 
 
+async def send_password_reset_email(to_email: str, full_name: str, reset_token: str) -> bool:
+    """Gửi email đặt lại mật khẩu"""
+    reset_url = f"{settings.FRONTEND_HOST}/reset-password?token={reset_token}"
+    html = _render(
+        "reset_password.html",
+        {
+            "full_name": full_name,
+            "reset_url": reset_url,
+            "project_name": settings.PROJECT_NAME,
+            "valid_hours": 24,  # Password reset tokens valid for 24 hours
+        },
+    )
+    return await send_email(
+        to_email=to_email,
+        subject="Đặt lại mật khẩu của bạn",
+        html_content=html,
+        plain_content=f"Xin chào {full_name}, vui lòng nhấn vào liên kết sau để đặt lại mật khẩu: {reset_url}",
+    )
+
+
 async def send_welcome_email(to_email: str, full_name: str) -> bool:
     """Gửi email chào mừng"""
     html = _render(

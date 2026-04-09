@@ -2,17 +2,47 @@ import uuid
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, select
 
 from app.api.deps import CurrentUser, SessionDep, CurrentAdmin
-from app.crud import crud_notification, crud_listing
+from app.crud import crud_notification, crud_listing, crud_escrow, crud_wallet, crud_order
 from app.crud.crud_listing import get_listing, get_pending_listings
 from app.crud.crud_user import get_user_by_id, get_users_list, update_user_status
 from app.models.enums import ListingStatus, NotificationType, UserRole
+from app.models.listing import Listing
+from app.models.order import Order
+from app.models.escrow import Escrow
 from app.models.user import User
+from app.schemas.escrow import ResolveEscrowRequest
 from app.schemas.listing import ListingRead
 from app.schemas.user import UserMe, UserStatusUpdate
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
+
+@router.get("/dashboard")
+async def get_dashboard_stats(
+    db: SessionDep,
+    admin_user: CurrentAdmin,
+):
+    """Admin: tổng quan nhanh hệ thống cho dashboard."""
+    total_users = (await db.execute(select(func.count()).select_from(User))).scalar_one()
+    total_listings = (await db.execute(select(func.count()).select_from(Listing))).scalar_one()
+    total_orders = (await db.execute(select(func.count()).select_from(Order))).scalar_one()
+    disputed_escrows = (
+        await db.execute(
+            select(func.count())
+            .select_from(Escrow)
+            .where(Escrow.status == "disputed")
+        )
+    ).scalar_one()
+
+    return {
+        "total_users": total_users,
+        "total_listings": total_listings,
+        "total_orders": total_orders,
+        "disputed_escrows": disputed_escrows,
+    }
 
 
 @router.get("/users", response_model=list[UserMe])
@@ -138,3 +168,84 @@ async def reject_listing_route(
         data={"listing_id": str(listing.id), "reason": reason or ""},
     )
     return listing
+
+
+@router.post("/escrows/{order_id}/resolve")
+async def resolve_escrow_dispute(
+    order_id: uuid.UUID,
+    payload: ResolveEscrowRequest,
+    admin_user: CurrentAdmin,
+    db: SessionDep,
+):
+    """Admin: resolve disputed escrow by releasing to seller or refunding buyer."""
+    order = await crud_order.get_order_by_id(db, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Đơn hàng không tìm thấy")
+
+    escrow = await crud_escrow.get_escrow_by_order_id(db, order_id)
+    if not escrow:
+        raise HTTPException(status_code=404, detail="Escrow không tìm thấy")
+
+    if payload.result == "release":
+        await crud_wallet.transfer_locked_to_user(
+            db=db,
+            from_wallet_id=escrow.buyer_wallet_id,
+            to_wallet_id=escrow.seller_wallet_id,
+            amount=escrow.amount,
+            order_id=order_id,
+            description=f"Admin release escrow for order {order_id}",
+        )
+    else:
+        await crud_wallet.unlock_balance(
+            db=db,
+            wallet_id=escrow.buyer_wallet_id,
+            amount=escrow.amount,
+            order_id=order_id,
+            description=f"Admin refund escrow for order {order_id}",
+        )
+
+    updated_escrow = await crud_escrow.resolve_dispute(
+        db=db,
+        escrow_id=escrow.id,
+        admin_id=admin_user.id,
+        resolution=payload.result,
+    )
+
+    if payload.result == "release":
+        await crud_order.update_order_status(db, order_id, "COMPLETED")
+        buyer_title = "Tranh chấp được xử lý"
+        buyer_message = "Admin đã xử lý tranh chấp: tiền được giải phóng cho người bán."
+        seller_title = "Nhận thanh toán escrow"
+        seller_message = "Admin đã xử lý tranh chấp và giải phóng thanh toán cho bạn."
+    else:
+        await crud_order.update_order_status(db, order_id, "CANCELLED")
+        buyer_title = "Hoàn tiền escrow thành công"
+        buyer_message = "Admin đã xử lý tranh chấp và hoàn tiền vào ví của bạn."
+        seller_title = "Tranh chấp được xử lý"
+        seller_message = "Admin đã xử lý tranh chấp: đơn hàng được hoàn tiền cho người mua."
+
+    await crud_notification.create_notification(
+        db=db,
+        user_id=order.buyer_id,
+        type=NotificationType.ORDER_CANCELLED if payload.result == "refund" else NotificationType.ORDER_COMPLETED,
+        title=buyer_title,
+        message=buyer_message,
+        data={"order_id": str(
+            order_id), "escrow_result": payload.result, "note": payload.note or ""},
+    )
+    await crud_notification.create_notification(
+        db=db,
+        user_id=order.seller_id,
+        type=NotificationType.ORDER_COMPLETED if payload.result == "release" else NotificationType.ORDER_CANCELLED,
+        title=seller_title,
+        message=seller_message,
+        data={"order_id": str(
+            order_id), "escrow_result": payload.result, "note": payload.note or ""},
+    )
+
+    return {
+        "message": "Escrow dispute resolved",
+        "order_id": str(order_id),
+        "result": payload.result,
+        "escrow_status": updated_escrow.status if updated_escrow else None,
+    }

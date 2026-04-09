@@ -64,4 +64,28 @@ class NotificationType(str, Enum):
     ORDER_DELIVERED = "order_delivered"
     ORDER_COMPLETED = "order_completed"
     ORDER_CANCELLED = "order_cancelled"
+    ORDER_STATUS_UPDATED = "order_status_updated"
     REVIEW_RECEIVED = "review_received"
+    WALLET_BALANCE_UPDATED = "wallet_balance_updated"
+    WALLET_LOCKED = "wallet_locked"
+    WALLET_RELEASED = "wallet_released"
+
+
+class TransactionType(str, Enum):
+    """Type of wallet transaction."""
+    DEPOSIT = "deposit"                    # Nạp tiền
+    WITHDRAW = "withdraw"                  # Rút tiền
+    ESCROW_LOCK = "escrow_lock"           # Khóa tiền vào escrow
+    ESCROW_RELEASE = "escrow_release"     # Giải phóng từ escrow
+    ESCROW_REFUND = "escrow_refund"       # Hoàn tiền từ escrow
+    PAYMENT = "payment"                    # Thanh toán
+
+
+class EscrowStatus(str, Enum):
+    """Status of escrow account."""
+    PENDING = "pending"                    # Chờ buyer fund
+    FUNDED = "funded"                      # Đã fund, chờ giao hàng
+    RELEASE_REQUESTED = "release_requested"  # Buyer request release
+    RELEASED = "released"                  # Đã release cho seller
+    DISPUTED = "disputed"                  # Tranh chấp
+    REFUNDED = "refunded"                  # Hoàn tiền cho buyer

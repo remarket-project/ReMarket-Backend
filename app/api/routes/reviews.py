@@ -68,10 +68,10 @@ async def get_user_reviews(user_id: uuid.UUID, db: SessionDep):
     return items
 
 
-@router.get("/{order_id}", response_model=ReviewRead)
+@router.get("/{order_id}", response_model=List[ReviewRead])
 async def get_review(order_id: uuid.UUID, db: SessionDep):
-    """Lấy đánh giá cho một đơn hàng"""
-    review = await crud_review.get_review_by_order(db, order_id)
-    if not review:
+    """Lấy tất cả đánh giá cho một đơn hàng"""
+    reviews = await crud_review.get_reviews_by_order(db, order_id)
+    if not reviews:
         raise HTTPException(status_code=404, detail="Đánh giá không tìm thấy")
-    return review
+    return reviews
