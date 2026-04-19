@@ -7,7 +7,6 @@ from app.models.category import (
     CategoryCreate,
     CategoryPublic,
     CategoryUpdate,
-    CategoryWithChildren,
 )
 from app.models.listing import (
     Listing,
@@ -55,7 +54,6 @@ __all__ = [
     "CategoryCreate",
     "CategoryPublic",
     "CategoryUpdate",
-    "CategoryWithChildren",
     "Listing",
     "ListingImage",
     "Offer",

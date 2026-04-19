@@ -10,7 +10,6 @@ from app.models import (
     CategoryCreate,
     CategoryPublic,
     CategoryUpdate,
-    CategoryWithChildren,
 )
 
 
@@ -19,6 +18,5 @@ __all__ = [
     "CategoryCreate",
     "CategoryUpdate",
     "CategoryPublic",
-    "CategoryWithChildren",
     "CategoriesPublic",
 ]

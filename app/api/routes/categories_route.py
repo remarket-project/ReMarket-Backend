@@ -10,12 +10,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.deps import CurrentAdmin, SessionDep
 from app.crud import crud_category
 from app.models import (
-    Category,
     CategoriesPublic,
     CategoryCreate,
     CategoryPublic,
     CategoryUpdate,
-    CategoryWithChildren,
 )
 
 router = APIRouter(prefix="/categories", tags=["categories"])
@@ -53,53 +51,24 @@ async def list_categories(
 
 
 # ============================================================================
-# Get Root Categories (Public)
+# Get Flat Categories (Compatibility Alias)
 # ============================================================================
 
 @router.get(
     "/roots",
-    response_model=list[CategoryWithChildren],
-    summary="Get root categories with children",
-    description="Get all root categories and their subcategories (tree structure)."
+    response_model=list[CategoryPublic],
+    summary="Get flat categories",
+    description="Compatibility endpoint. Returns flat categories without hierarchy."
 )
-async def get_root_categories(session: SessionDep) -> list[CategoryWithChildren]:
+async def get_root_categories(session: SessionDep) -> list[CategoryPublic]:
     """
-    Get root categories (parent_id is None) with their children.
-
-    Returns a tree structure suitable for UI category selectors.
+    Get categories using a flat structure.
 
     **Response:**
-    - List of root categories with nested children
+    - List of categories
     """
-    root_categories = await crud_category.get_categories_root(session)
-
-    result = []
-    for category in root_categories:
-        children = await crud_category.get_categories_by_parent(session, category.id)
-        result.append(
-            CategoryWithChildren(
-                id=category.id,
-                name=category.name,
-                slug=category.slug,
-                icon_url=category.icon_url,
-                parent_id=category.parent_id,
-                created_at=category.created_at,
-                children=[
-                    CategoryWithChildren(
-                        id=child.id,
-                        name=child.name,
-                        slug=child.slug,
-                        icon_url=child.icon_url,
-                        parent_id=child.parent_id,
-                        created_at=child.created_at,
-                        children=[]
-                    )
-                    for child in children
-                ]
-            )
-        )
-
-    return result
+    categories = await crud_category.get_all_categories(session, skip=0, limit=1000)
+    return categories
 
 
 # ============================================================================
@@ -108,19 +77,19 @@ async def get_root_categories(session: SessionDep) -> list[CategoryWithChildren]
 
 @router.get(
     "/{slug}",
-    response_model=CategoryWithChildren,
+    response_model=CategoryPublic,
     summary="Get category by slug",
-    description="Get category details and its subcategories."
+    description="Get category details by slug."
 )
-async def get_category_by_slug(slug: str, session: SessionDep) -> CategoryWithChildren:
+async def get_category_by_slug(slug: str, session: SessionDep) -> CategoryPublic:
     """
-    Get category by slug with its children.
+    Get category by slug.
 
     **Path parameters:**
     - slug: URL-friendly category identifier
 
     **Response:**
-    - Category details with nested children
+    - Category details
 
     **Errors:**
     - 404: Category not found
@@ -132,28 +101,7 @@ async def get_category_by_slug(slug: str, session: SessionDep) -> CategoryWithCh
             detail="Category not found"
         )
 
-    children = await crud_category.get_categories_by_parent(session, category.id)
-
-    return CategoryWithChildren(
-        id=category.id,
-        name=category.name,
-        slug=category.slug,
-        icon_url=category.icon_url,
-        parent_id=category.parent_id,
-        created_at=category.created_at,
-        children=[
-            CategoryWithChildren(
-                id=child.id,
-                name=child.name,
-                slug=child.slug,
-                icon_url=child.icon_url,
-                parent_id=child.parent_id,
-                created_at=child.created_at,
-                children=[]
-            )
-            for child in children
-        ]
-    )
+    return category
 
 
 # ============================================================================
@@ -162,22 +110,22 @@ async def get_category_by_slug(slug: str, session: SessionDep) -> CategoryWithCh
 
 @router.get(
     "/id/{category_id:uuid}",
-    response_model=CategoryWithChildren,
+    response_model=CategoryPublic,
     summary="Get category by ID",
-    description="Get category details and its subcategories by UUID."
+    description="Get category details by UUID."
 )
 async def get_category_by_id(
     category_id: uuid.UUID,
     session: SessionDep
-) -> CategoryWithChildren:
+) -> CategoryPublic:
     """
-    Get category by UUID with its children.
+    Get category by UUID.
 
     **Path parameters:**
     - category_id: Category UUID
 
     **Response:**
-    - Category details with nested children
+    - Category details
 
     **Errors:**
     - 404: Category not found
@@ -189,28 +137,7 @@ async def get_category_by_id(
             detail="Category not found"
         )
 
-    children = await crud_category.get_categories_by_parent(session, category.id)
-
-    return CategoryWithChildren(
-        id=category.id,
-        name=category.name,
-        slug=category.slug,
-        icon_url=category.icon_url,
-        parent_id=category.parent_id,
-        created_at=category.created_at,
-        children=[
-            CategoryWithChildren(
-                id=child.id,
-                name=child.name,
-                slug=child.slug,
-                icon_url=child.icon_url,
-                parent_id=child.parent_id,
-                created_at=child.created_at,
-                children=[]
-            )
-            for child in children
-        ]
-    )
+    return category
 
 
 # ============================================================================
@@ -236,7 +163,6 @@ async def create_category(
     - name: Category name
     - slug: URL-friendly identifier (must be unique)
     - icon_url: (optional) URL to category icon
-    - parent_id: (optional) Parent category ID for subcategories
 
     **Response:**
     - Created category
@@ -301,7 +227,7 @@ async def update_category(
             detail="Category not found"
         )
 
-    updated = await crud_category.update_category(session, category, data)
+    updated = await crud_category.update_category(session, category_id, data)
     return updated
 
 

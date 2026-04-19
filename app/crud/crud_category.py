@@ -30,25 +30,6 @@ async def get_category_by_slug(
     return result.scalar_one_or_none()
 
 
-async def get_categories_root(db: AsyncSession) -> list[Category]:
-    """Get all root categories (parent_id is None)."""
-    result = await db.execute(
-        select(Category).where(Category.parent_id.is_(None))
-    )
-    return list(result.scalars().all())
-
-
-async def get_categories_by_parent(
-    db: AsyncSession,
-    parent_id: uuid.UUID
-) -> list[Category]:
-    """Get all categories with given parent_id."""
-    result = await db.execute(
-        select(Category).where(Category.parent_id == parent_id)
-    )
-    return list(result.scalars().all())
-
-
 async def get_all_categories(
     db: AsyncSession,
     skip: int = 0,
@@ -70,7 +51,6 @@ async def create_category(
         name=category_in.name,
         slug=category_in.slug,
         icon_url=category_in.icon_url,
-        parent_id=category_in.parent_id
     )
     db.add(category)
     await db.commit()

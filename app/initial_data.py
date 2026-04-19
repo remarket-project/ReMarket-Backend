@@ -35,7 +35,7 @@ def init_db_data() -> None:
             logger.info(f"Created admin user: {settings.FIRST_SUPERUSER}")
 
         # ====================================================================
-        # Seed Categories (Root level - 8 categories)
+        # Seed Categories (flat structure - 8 categories)
         # ====================================================================
         categories_data = [
             {
