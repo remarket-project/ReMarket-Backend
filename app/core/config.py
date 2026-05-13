@@ -138,6 +138,19 @@ class Settings(BaseSettings):
     # File Upload
     UPLOAD_DIR: str = "uploads"
 
+    # MinIO Configuration (optional)
+    MINIO_ENDPOINT: str | None = None
+    MINIO_ACCESS_KEY: str | None = None
+    MINIO_SECRET_KEY: str | None = None
+    MINIO_BUCKET_NAME: str = "listings"
+    MINIO_USE_SSL: bool = False
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def use_minio(self) -> bool:
+        """Determine if MinIO should be used instead of local filesystem"""
+        return bool(self.MINIO_ENDPOINT and self.MINIO_ACCESS_KEY and self.MINIO_SECRET_KEY)
+
     def _check_default_secret(self, var_name: str, value: str | None) -> None:
         if value == "changethis":
             message = (

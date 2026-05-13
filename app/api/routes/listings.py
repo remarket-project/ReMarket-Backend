@@ -22,6 +22,7 @@ from app.schemas.listing import (
     ListingImageRead
 )
 from app.crud import crud_listing, crud_category
+from app.services.minio_service import get_minio_service
 
 router = APIRouter(prefix="/listings", tags=["Listings"])
 limiter = Limiter(key_func=get_remote_address)
@@ -281,7 +282,7 @@ async def upload_listing_image(
     file: UploadFile = File(...),
     is_primary: bool = Query(False),
 ):
-    """Tải ảnh lên cho bài đăng"""
+    """Tải ảnh lên cho bài đăng (hỗ trợ MinIO hoặc local filesystem)"""
     listing = await crud_listing.get_listing(db, str(listing_id))
     if not listing:
         raise HTTPException(status_code=404, detail="Bài đăng không tìm thấy")
@@ -306,14 +307,31 @@ async def upload_listing_image(
         raise HTTPException(status_code=400, detail="File quá lớn")
 
     unique_filename = f"{uuid.uuid4().hex}.{ext}"
-    file_path = os.path.abspath(os.path.join(ABS_UPLOAD_DIR, unique_filename))
-    if not file_path.startswith(f"{ABS_UPLOAD_DIR}{os.sep}"):
-        raise HTTPException(
-            status_code=400, detail="Đường dẫn upload không hợp lệ")
 
-    with open(file_path, "wb") as buffer:
-        buffer.write(file_bytes)
+    # Upload to MinIO or local filesystem
+    if settings.use_minio:
+        try:
+            minio_service = get_minio_service()
+            file_path = f"listings/{str(listing_id)}/{unique_filename}"
+            image_url = minio_service.upload_file(
+                file_path,
+                file_bytes,
+                content_type=file.content_type,
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"Error uploading to MinIO: {str(e)}")
+    else:
+        # Use local filesystem
+        file_path = os.path.abspath(os.path.join(ABS_UPLOAD_DIR, unique_filename))
+        if not file_path.startswith(f"{ABS_UPLOAD_DIR}{os.sep}"):
+            raise HTTPException(
+                status_code=400, detail="Đường dẫn upload không hợp lệ")
 
-    image_url = f"/{settings.UPLOAD_DIR}/listings/{unique_filename}"
+        with open(file_path, "wb") as buffer:
+            buffer.write(file_bytes)
+
+        image_url = f"/{settings.UPLOAD_DIR}/listings/{unique_filename}"
+
     new_image = await crud_listing.add_listing_image(db, str(listing_id), image_url, is_primary)
     return new_image
