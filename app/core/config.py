@@ -3,7 +3,6 @@ import warnings
 from typing import Any, Literal
 
 from pydantic import (
-    AnyUrl,
     BeforeValidator,
     EmailStr,
     HttpUrl,
@@ -77,7 +76,7 @@ class Settings(BaseSettings):
         return f"postgresql+psycopg://{self.POSTGRES_USER}:{encoded_password}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     # CORS
-    BACKEND_CORS_ORIGINS: list[AnyUrl] | str = [
+    BACKEND_CORS_ORIGINS: list[str] | str = [
         "http://localhost:5173",
         "http://localhost:3000",
         "http://127.0.0.1:5173",
@@ -88,12 +87,18 @@ class Settings(BaseSettings):
     def cors_origins(self) -> list[str]:
         """Parse CORS origins from list or comma-separated string."""
         if isinstance(self.BACKEND_CORS_ORIGINS, str):
+            if self.BACKEND_CORS_ORIGINS.startswith("[") and self.BACKEND_CORS_ORIGINS.endswith("]"):
+                import json
+                try:
+                    return json.loads(self.BACKEND_CORS_ORIGINS)
+                except Exception:
+                    pass
             return [
                 origin.strip()
                 for origin in self.BACKEND_CORS_ORIGINS.split(",")
                 if origin.strip()
             ]
-        return [str(origin).rstrip("/") for origin in self.BACKEND_CORS_ORIGINS]
+        return [origin.rstrip("/") for origin in self.BACKEND_CORS_ORIGINS]
 
     # Redis (optional - for real-time multi-instance)
     REDIS_URL: str | None = None
