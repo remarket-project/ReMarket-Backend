@@ -12,8 +12,13 @@ import app.models.listing  # noqa: F401
 import app.models.notification  # noqa: F401
 import app.models.offer  # noqa: F401
 import app.models.order  # noqa: F401
+import app.models.order_event  # noqa: F401
 import app.models.review  # noqa: F401
 import app.models.user  # noqa: F401
+import app.models.chat  # noqa: F401
+import app.models.saved_follow  # noqa: F401
+import app.models.admin_audit  # noqa: F401
+import app.models.static_content  # noqa: F401
 
 
 async def init_db() -> None:

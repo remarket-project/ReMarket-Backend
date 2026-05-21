@@ -42,6 +42,8 @@ class Listing(ListingBase, table=True):
         sa_type=DateTime(timezone=True),
     )
 
+    rejection_reason: str | None = Field(default=None, max_length=1000)
+
     seller: "User" = Relationship(back_populates="listings")
     category: "Category" = Relationship(back_populates="listings")
     images: list["ListingImage"] = Relationship(
@@ -53,6 +55,13 @@ class Listing(ListingBase, table=True):
     orders: list["Order"] = Relationship(
         back_populates="listing", cascade_delete=True
     )
+    # Analytics / metadata
+    view_count: int = Field(default=0)
+    save_count: int = Field(default=0)
+    is_featured: bool = Field(default=False)
+    published_at: datetime | None = Field(
+        default=None, sa_type=DateTime(timezone=True))
+    location_summary: str | None = Field(default=None, max_length=255)
 
 
 class ListingImageBase(SQLModel):

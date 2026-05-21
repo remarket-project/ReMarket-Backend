@@ -16,6 +16,7 @@ from app.models.listing import Listing
 from app.models.offer import Offer
 from app.models.order import Order
 from app.models.user import User
+from app.crud.crud_order_event import create_order_event
 
 
 def utc_now() -> datetime:
@@ -114,6 +115,8 @@ async def create_direct_order(
 
     await db.commit()
     await db.refresh(order)
+    # record timeline event
+    await create_order_event(db, order.id, "ORDER_CREATED", f"Order created for listing {locked_listing.id}", actor_id=buyer_id)
     return order, rejected_offers
 
 
@@ -131,6 +134,7 @@ async def complete_order(db: AsyncSession, order: Order) -> Order:
 
     await db.commit()
     await db.refresh(order)
+    await create_order_event(db, order.id, "ORDER_COMPLETED", "Order completed", actor_id=order.buyer_id)
     return order
 
 
@@ -148,6 +152,7 @@ async def cancel_order(db: AsyncSession, order: Order) -> Order:
 
     await db.commit()
     await db.refresh(order)
+    await create_order_event(db, order.id, "ORDER_CANCELLED", "Order cancelled", actor_id=order.buyer_id)
     return order
 
 
@@ -167,4 +172,5 @@ async def update_order_status(
     db.add(order)
     await db.commit()
     await db.refresh(order)
+    await create_order_event(db, order.id, "ORDER_STATUS_UPDATED", f"Status updated to {new_status}")
     return order

@@ -34,6 +34,11 @@ class ListingRead(ListingBase):
     seller_id: uuid.UUID
     status: ListingStatus
     rejection_reason: Optional[str] = None
+    view_count: int = 0
+    save_count: int = 0
+    is_featured: bool = False
+    published_at: Optional[datetime] = None
+    location_summary: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

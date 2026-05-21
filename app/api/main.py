@@ -10,6 +10,7 @@ from app.api.routes import (
     reviews,
     admin,
     notifications,
+    content,
     websocket,
     wallet,
     escrow,
@@ -34,6 +35,7 @@ api_router.include_router(orders.router)
 api_router.include_router(reviews.router)
 api_router.include_router(admin.router)
 api_router.include_router(notifications.router)
+api_router.include_router(content.router)
 
 # ============================================================================
 # Wallet Route

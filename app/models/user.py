@@ -49,6 +49,19 @@ class UserBase(SQLModel):
     is_phone_verified: bool = Field(default=False)
     is_email_verified: bool = Field(default=False)
 
+    # Shop / seller identity
+    shop_name: str | None = Field(default=None, max_length=255)
+    shop_description: str | None = Field(default=None, max_length=2000)
+    shop_verified: bool = Field(default=False)
+    shop_response_time: int | None = Field(
+        default=None, description="Estimated response time in minutes")
+
+    # Activity & social
+    last_active_at: datetime | None = None
+    follower_count: int = Field(default=0)
+    following_count: int = Field(default=0)
+    sales_count: int = Field(default=0)
+
     # Trust & Rating
     trust_score: Decimal = Field(default=Decimal(
         "0.0"), decimal_places=1, max_digits=5)
@@ -97,6 +110,11 @@ class UserUpdate(SQLModel):
     district: str | None = Field(default=None, max_length=100)
     ward: str | None = Field(default=None, max_length=100)
     address_detail: str | None = Field(default=None, max_length=255)
+    # Shop fields editable by user
+    shop_name: str | None = Field(default=None, max_length=255)
+    shop_description: str | None = Field(default=None, max_length=2000)
+    shop_verified: bool | None = None
+    shop_response_time: int | None = None
 
 
 class UpdatePassword(SQLModel):
@@ -192,6 +210,12 @@ class UserPublic(SQLModel):
     rating_avg: Decimal
     rating_count: int
     completed_orders: int
+    # Shop summary
+    shop_name: str | None = None
+    shop_description: str | None = None
+    shop_verified: bool = False
+    follower_count: int = 0
+    sales_count: int = 0
     created_at: datetime
 
 

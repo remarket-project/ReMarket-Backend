@@ -51,6 +51,18 @@ async def websocket_endpoint(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Token không hợp lệ")
         return
 
+    # Verify user exists and is active. Use a short-lived DB session here.
+    from app.db.session import AsyncSessionLocal
+    from app.crud.crud_user import get_user_by_id
+
+    async with AsyncSessionLocal() as session:
+        user = await get_user_by_id(session, user_id)
+        if not user or getattr(user, "is_active", True) is False:
+            logger.warning(
+                f"WebSocket connection refused: user {user_id} not found or inactive")
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Người dùng không tồn tại hoặc bị khoá")
+            return
+
     connection_id = await ws_manager.connect(websocket, user_id)
 
     try:

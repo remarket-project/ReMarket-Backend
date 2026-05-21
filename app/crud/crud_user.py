@@ -51,7 +51,9 @@ async def create_user(db: AsyncSession, user_in: UserCreate | UserRegister) -> U
         email=user_in.email,
         full_name=user_in.full_name,
         password_hash=get_password_hash(user_in.password),
-        phone=getattr(user_in, 'phone', None)
+        phone=getattr(user_in, 'phone', None),
+        shop_name=getattr(user_in, 'shop_name', None),
+        shop_description=getattr(user_in, 'shop_description', None),
     )
     db.add(user)
     await db.commit()

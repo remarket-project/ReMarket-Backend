@@ -45,21 +45,37 @@ async def get_user_notifications(
 async def create_notification(
     db: AsyncSession,
     user_id: uuid.UUID,
-    notification_type: NotificationType | str,
+    type: NotificationType | str,
     title: str,
-    message: str,
+    message: Optional[str] = None,
     data: Optional[dict] = None,
+    description: Optional[str] = None,
+    related_id: Optional[str] = None,
 ) -> Notification:
-    """Create a notification for a user."""
+    """Create a notification for a user.
+
+    Backwards-compatible: some callers historically passed `description` or
+    `related_id` keys. Normalize to `message` and include `related_id` inside
+    `data` when provided.
+    """
+    notification_type = type
     if isinstance(notification_type, str):
         notification_type = NotificationType(notification_type)
+
+    # Prefer explicit message, otherwise fall back to description
+    final_message = message or description or ""
+
+    final_data = dict(data or {})
+    if related_id is not None:
+        # normalize related id into data payload
+        final_data.setdefault("related_id", str(related_id))
 
     notification = Notification(
         user_id=user_id,
         type=notification_type,
         title=title,
-        message=message,
-        data=data or {},
+        message=final_message,
+        data=final_data,
     )
     db.add(notification)
     await db.commit()

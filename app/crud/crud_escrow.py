@@ -285,7 +285,8 @@ async def resolve_dispute(
     db: AsyncSession,
     escrow_id: uuid.UUID,
     admin_id: uuid.UUID,
-    resolution: str  # "refund" or "release"
+    resolution: str,  # "refund" or "release"
+    note: Optional[str] = None,
 ) -> Optional[Escrow]:
     """
     Resolve a disputed escrow.
@@ -312,6 +313,9 @@ async def resolve_dispute(
         raise ValueError(f"Escrow is not disputed, status: {escrow.status}")
 
     escrow.admin_resolved_by = admin_id
+    escrow.admin_notes = note or None
+    escrow.resolution_reason = resolution
+    escrow.resolved_at = datetime.now(timezone.utc)
     escrow.updated_at = datetime.now(timezone.utc)
 
     if resolution == "refund":

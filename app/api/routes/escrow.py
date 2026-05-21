@@ -145,14 +145,15 @@ async def fund_escrow(
         related_id=str(order_id)
     )
     await ws_manager.send_to_user(
-        str(order.seller_id),
+        order.seller_id,
         {
             "type": "notification",
             "data": {
                 "id": str(seller_notification.id),
-                "type": seller_notification.type,
+                "type": str(seller_notification.type),
                 "title": seller_notification.title,
-                "description": seller_notification.description
+                "message": seller_notification.message,
+                "data": seller_notification.data or {}
             }
         }
     )
@@ -224,13 +225,15 @@ async def request_refund(
             related_id=str(order_id)
         )
         await ws_manager.send_to_user(
-            admin_id,
+            uuid.UUID(admin_id),
             {
                 "type": "notification",
                 "data": {
                     "id": str(notification.id),
-                    "type": notification.type,
+                    "type": str(notification.type),
                     "title": notification.title,
+                    "message": notification.message,
+                    "data": notification.data or {}
                 },
             },
         )
@@ -302,14 +305,15 @@ async def request_release(
         related_id=str(order_id)
     )
     await ws_manager.send_to_user(
-        str(order.seller_id),
+        order.seller_id,
         {
             "type": "notification",
             "data": {
                 "id": str(seller_notification.id),
-                "type": seller_notification.type,
+                "type": str(seller_notification.type),
                 "title": seller_notification.title,
-                "description": seller_notification.description
+                "message": seller_notification.message,
+                "data": seller_notification.data or {}
             }
         }
     )
@@ -398,13 +402,15 @@ async def confirm_release(
         related_id=str(order_id)
     )
     await ws_manager.send_to_user(
-        str(order.buyer_id),
+        order.buyer_id,
         {
             "type": "notification",
             "data": {
                 "id": str(buyer_notification.id),
-                "type": buyer_notification.type,
-                "title": buyer_notification.title
+                "type": str(buyer_notification.type),
+                "title": buyer_notification.title,
+                "message": buyer_notification.message,
+                "data": buyer_notification.data or {}
             }
         }
     )
@@ -418,13 +424,15 @@ async def confirm_release(
         related_id=str(order_id)
     )
     await ws_manager.send_to_user(
-        str(order.seller_id),
+        order.seller_id,
         {
             "type": "notification",
             "data": {
                 "id": str(seller_notification.id),
-                "type": seller_notification.type,
-                "title": seller_notification.title
+                "type": str(seller_notification.type),
+                "title": seller_notification.title,
+                "message": seller_notification.message,
+                "data": seller_notification.data or {}
             }
         }
     )
@@ -501,13 +509,15 @@ async def open_dispute(
             related_id=str(order_id)
         )
         await ws_manager.send_to_user(
-            admin_id,
+            uuid.UUID(admin_id),
             {
                 "type": "notification",
                 "data": {
                     "id": str(notification.id),
-                    "type": notification.type,
-                    "title": notification.title
+                    "type": str(notification.type),
+                    "title": notification.title,
+                    "message": notification.message,
+                    "data": notification.data or {}
                 }
             }
         )

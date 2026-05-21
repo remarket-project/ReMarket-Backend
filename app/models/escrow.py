@@ -69,6 +69,13 @@ class Escrow(SQLModel, table=True):
         foreign_key="users.id",
         ondelete="SET NULL"
     )
+    # Resolution / admin notes
+    admin_notes: Optional[str] = Field(default=None, max_length=1000)
+    resolution_reason: Optional[str] = Field(default=None, max_length=500)
+    resolved_at: Optional[datetime] = Field(
+        default=None, sa_type=DateTime(timezone=True))
+    dispute_status: Optional[str] = Field(
+        default=None, sa_column=Column(String(50)))
 
     # Timestamps
     funded_at: Optional[datetime] = Field(
