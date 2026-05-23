@@ -1,19 +1,29 @@
 import uuid
+from datetime import datetime
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+
+from fastapi import APIRouter, HTTPException, status, Request
+from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.api.deps import CurrentUser, SessionDep
-from app.crud import crud_escrow, crud_listing, crud_notification, crud_order, crud_user, crud_wallet
+from app.crud import crud_escrow, crud_listing, crud_notification, crud_order, crud_order_event, crud_user, crud_wallet
 from app.models.enums import ListingStatus, OrderStatus, NotificationType
-from app.models.user import User
 from app.schemas.order import OrderDirectCreate, OrderRead, OrderStatusUpdate
 from app.services import send_order_created_email, send_order_completed_email
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 limiter = Limiter(key_func=get_remote_address)
+
+
+class OrderEventRead(BaseModel):
+    id: uuid.UUID
+    order_id: uuid.UUID
+    event_type: str
+    detail: str | None = None
+    actor_id: uuid.UUID | None = None
+    created_at: datetime
 
 
 @router.post("", response_model=OrderRead, status_code=status.HTTP_201_CREATED)
@@ -120,6 +130,23 @@ async def get_order(
         raise HTTPException(status_code=403, detail="Không có quyền truy cập")
 
     return order
+
+
+@router.get("/{order_id}/timeline", response_model=List[OrderEventRead])
+async def get_order_timeline(
+    current_user: CurrentUser,
+    db: SessionDep,
+    order_id: uuid.UUID,
+):
+    order = await crud_order.get_order_by_id(db, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Đơn hàng không tìm thấy")
+
+    if order.buyer_id != current_user.id and order.seller_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Không có quyền truy cập")
+
+    events = await crud_order_event.get_order_events(db, order_id)
+    return [OrderEventRead.model_validate(event) for event in events]
 
 
 @router.post("/{order_id}/complete", response_model=OrderRead)

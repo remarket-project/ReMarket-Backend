@@ -34,6 +34,7 @@ from app.models.chat import ChatConversation, Message, ConversationParticipant
 from app.models.order_event import OrderEvent
 from app.models.order import Order
 from app.models.offer import Offer
+from app.models.static_content import StaticContent
 from sqlmodel import SQLModel
 
 from app.models.category import (

@@ -4,20 +4,80 @@ User API endpoints.
 Handles user profile management and public user info access.
 """
 import uuid
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy import case, func, select
 
 from app.api.deps import CurrentUser, SessionDep, CurrentAdmin
 from app.core.security import (
     verify_password,
     get_password_hash,
 )
-from app.crud import crud_user
+from app.crud import crud_listing, crud_user
 from app.models import User, UserUpdate, UserPrivate, UserPublic, UsersPublic
+from app.models.enums import ListingStatus
+from app.models.listing import Listing
+from app.models.review import Review
+from app.schemas.listing import ListingWithImages
 from app.schemas.user import UserUpdate as UserUpdateSchema
 from app.schemas.auth import ChangePasswordRequest, MessageResponse
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+class ReviewSummaryRead(BaseModel):
+    average_rating: Decimal
+    total_reviews: int
+    rating_breakdown: dict[str, int]
+
+
+class SellerShopProfileRead(BaseModel):
+    seller: UserPublic
+    total_active_listings: int
+    recent_listings: list[ListingWithImages]
+    review_summary: ReviewSummaryRead
+
+
+class ReviewSummaryOnlyRead(BaseModel):
+    user_id: uuid.UUID
+    average_rating: Decimal
+    total_reviews: int
+    rating_breakdown: dict[str, int]
+
+
+async def _build_listing_with_images(session: SessionDep, listing: Listing) -> ListingWithImages:
+    images = await crud_listing.get_listing_images(session, str(listing.id))
+    listing_dict = listing.model_dump()
+    listing_dict["images"] = images
+    return ListingWithImages(**listing_dict)
+
+
+async def _get_review_summary(session: SessionDep, user_id: uuid.UUID) -> ReviewSummaryRead:
+    result = await session.execute(
+        select(
+            func.count(Review.id),
+            func.avg(Review.rating),
+            func.sum(case((Review.rating == 5, 1), else_=0)),
+            func.sum(case((Review.rating == 4, 1), else_=0)),
+            func.sum(case((Review.rating == 3, 1), else_=0)),
+            func.sum(case((Review.rating == 2, 1), else_=0)),
+            func.sum(case((Review.rating == 1, 1), else_=0)),
+        ).where(Review.reviewee_id == user_id)
+    )
+    total_reviews, avg_rating, five, four, three, two, one = result.one()
+    return ReviewSummaryRead(
+        average_rating=Decimal(str(round(float(avg_rating or 0), 2))),
+        total_reviews=int(total_reviews or 0),
+        rating_breakdown={
+            "5": int(five or 0),
+            "4": int(four or 0),
+            "3": int(three or 0),
+            "2": int(two or 0),
+            "1": int(one or 0),
+        },
+    )
 
 
 # ============================================================================
@@ -164,6 +224,79 @@ async def get_user_profile(
             detail="User not found"
         )
     return user
+
+    @router.get(
+        "/{user_id}/reviews/summary",
+        response_model=ReviewSummaryOnlyRead,
+        summary="Get review summary",
+        description="Get aggregate review stats for a user.",
+    )
+    async def get_user_review_summary(
+        user_id: uuid.UUID,
+        session: SessionDep,
+    ) -> ReviewSummaryOnlyRead:
+        user = await crud_user.get_user_by_id(session, user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
+
+        summary = await _get_review_summary(session, user_id)
+        return ReviewSummaryOnlyRead(
+            user_id=user_id,
+            average_rating=summary.average_rating,
+            total_reviews=summary.total_reviews,
+            rating_breakdown=summary.rating_breakdown,
+        )
+
+    @router.get(
+        "/{user_id}/shop",
+        response_model=SellerShopProfileRead,
+        summary="Get seller shop profile",
+        description="Get a seller profile with recent active listings and review stats.",
+    )
+    async def get_seller_shop_profile(
+        user_id: uuid.UUID,
+        session: SessionDep,
+    ) -> SellerShopProfileRead:
+        user = await crud_user.get_user_by_id(session, user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
+
+        seller = UserPublic.model_validate(user)
+        review_summary = await _get_review_summary(session, user_id)
+
+        recent_listings_result, _ = await crud_listing.search_listings(
+            session,
+            seller_id=str(user_id),
+            status=ListingStatus.ACTIVE,
+            sort_by="newest",
+            skip=0,
+            limit=6,
+        )
+        recent_listings = [
+            await _build_listing_with_images(session, listing)
+            for listing in recent_listings_result
+        ]
+
+        total_active_listings_result = await session.execute(
+            select(func.count()).select_from(Listing).where(
+                Listing.seller_id == user_id,
+                Listing.status == ListingStatus.ACTIVE,
+            )
+        )
+
+        return SellerShopProfileRead(
+            seller=seller,
+            total_active_listings=int(
+                total_active_listings_result.scalar_one()),
+            recent_listings=recent_listings,
+            review_summary=review_summary,
+        )
 
 
 # ============================================================================

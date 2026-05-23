@@ -1,38 +1,161 @@
 """CRUD for chat models (basic)."""
 import uuid
 from typing import Optional
-from sqlalchemy.future import select
+
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.chat import ChatConversation, Message, ConversationParticipant
+from app.models.chat import ChatConversation, ConversationParticipant, Message
 
 
-async def create_conversation(db: AsyncSession, listing_id: Optional[uuid.UUID] = None) -> ChatConversation:
-    conv = ChatConversation(listing_id=listing_id)
-    db.add(conv)
+async def create_conversation(
+    db: AsyncSession,
+    listing_id: Optional[uuid.UUID] = None,
+) -> ChatConversation:
+    conversation = ChatConversation(listing_id=listing_id)
+    db.add(conversation)
     await db.commit()
-    await db.refresh(conv)
-    return conv
+    await db.refresh(conversation)
+    return conversation
 
 
-async def add_participant(db: AsyncSession, conversation_id: uuid.UUID, user_id: uuid.UUID) -> ConversationParticipant:
-    p = ConversationParticipant(
-        conversation_id=conversation_id, user_id=user_id)
-    db.add(p)
+async def get_conversation_by_id(
+    db: AsyncSession,
+    conversation_id: uuid.UUID,
+) -> ChatConversation | None:
+    result = await db.execute(
+        select(ChatConversation).where(ChatConversation.id == conversation_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_conversation_by_listing_and_user(
+    db: AsyncSession,
+    listing_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> ChatConversation | None:
+    result = await db.execute(
+        select(ChatConversation)
+        .join(
+            ConversationParticipant,
+            ConversationParticipant.conversation_id == ChatConversation.id,
+        )
+        .where(
+            ChatConversation.listing_id == listing_id,
+            ConversationParticipant.user_id == user_id,
+        )
+        .order_by(ChatConversation.created_at.desc())
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_user_conversations(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    skip: int = 0,
+    limit: int = 20,
+) -> tuple[list[ChatConversation], int]:
+    total = (
+        await db.execute(
+            select(func.count())
+            .select_from(ChatConversation)
+            .join(
+                ConversationParticipant,
+                ConversationParticipant.conversation_id == ChatConversation.id,
+            )
+            .where(ConversationParticipant.user_id == user_id)
+        )
+    ).scalar_one()
+
+    result = await db.execute(
+        select(ChatConversation)
+        .join(
+            ConversationParticipant,
+            ConversationParticipant.conversation_id == ChatConversation.id,
+        )
+        .where(ConversationParticipant.user_id == user_id)
+        .order_by(ChatConversation.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    return list(result.scalars().unique().all()), int(total)
+
+
+async def get_conversation_participants(
+    db: AsyncSession,
+    conversation_id: uuid.UUID,
+) -> list[ConversationParticipant]:
+    result = await db.execute(
+        select(ConversationParticipant)
+        .where(ConversationParticipant.conversation_id == conversation_id)
+        .order_by(ConversationParticipant.joined_at.asc())
+    )
+    return list(result.scalars().all())
+
+
+async def add_participant(
+    db: AsyncSession,
+    conversation_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> ConversationParticipant:
+    result = await db.execute(
+        select(ConversationParticipant).where(
+            ConversationParticipant.conversation_id == conversation_id,
+            ConversationParticipant.user_id == user_id,
+        )
+    )
+    participant = result.scalar_one_or_none()
+    if participant:
+        return participant
+
+    participant = ConversationParticipant(
+        conversation_id=conversation_id,
+        user_id=user_id,
+    )
+    db.add(participant)
     await db.commit()
-    await db.refresh(p)
-    return p
+    await db.refresh(participant)
+    return participant
 
 
-async def post_message(db: AsyncSession, conversation_id: uuid.UUID, sender_id: uuid.UUID, content: str) -> Message:
-    m = Message(conversation_id=conversation_id,
-                sender_id=sender_id, content=content)
-    db.add(m)
+async def is_participant(
+    db: AsyncSession,
+    conversation_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> bool:
+    result = await db.execute(
+        select(ConversationParticipant).where(
+            ConversationParticipant.conversation_id == conversation_id,
+            ConversationParticipant.user_id == user_id,
+        )
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def post_message(
+    db: AsyncSession,
+    conversation_id: uuid.UUID,
+    sender_id: uuid.UUID,
+    content: str,
+) -> Message:
+    message = Message(
+        conversation_id=conversation_id,
+        sender_id=sender_id,
+        content=content,
+    )
+    db.add(message)
     await db.commit()
-    await db.refresh(m)
-    return m
+    await db.refresh(message)
+    return message
 
 
-async def get_conversation_messages(db: AsyncSession, conversation_id: uuid.UUID):
-    result = await db.execute(select(Message).where(Message.conversation_id == conversation_id).order_by(Message.created_at.asc()))
+async def get_conversation_messages(
+    db: AsyncSession,
+    conversation_id: uuid.UUID,
+) -> list[Message]:
+    result = await db.execute(
+        select(Message)
+        .where(Message.conversation_id == conversation_id)
+        .order_by(Message.created_at.asc())
+    )
     return list(result.scalars().all())

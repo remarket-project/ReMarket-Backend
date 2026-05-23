@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import delete, func, update
+from sqlalchemy import delete, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -193,6 +193,8 @@ async def search_listings(
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
     status: ListingStatus = ListingStatus.ACTIVE,
+    sort_by: str = "newest",
+    featured_only: bool = False,
     skip: int = 0,
     limit: int = 100
 ) -> tuple[list[Listing], int]:
@@ -204,8 +206,17 @@ async def search_listings(
 
     if status:
         conditions.append(Listing.status == status)
+    if featured_only:
+        conditions.append(Listing.is_featured.is_(True))
     if keyword:
-        conditions.append(Listing.title.ilike(f"%{keyword}%"))
+        keyword_filter = f"%{keyword}%"
+        conditions.append(
+            or_(
+                Listing.title.ilike(keyword_filter),
+                Listing.description.ilike(keyword_filter),
+                Listing.location_summary.ilike(keyword_filter),
+            )
+        )
     if category_id:
         conditions.append(Listing.category_id == _to_uuid(category_id))
     if seller_id:
@@ -225,11 +236,120 @@ async def search_listings(
     total = count_result.scalar_one()
 
     # Get paginated results
-    query = query.order_by(Listing.created_at.desc()).offset(skip).limit(limit)
+    order_map = {
+        "newest": [Listing.created_at.desc()],
+        "oldest": [Listing.created_at.asc()],
+        "price_asc": [Listing.price.asc(), Listing.created_at.desc()],
+        "price_desc": [Listing.price.desc(), Listing.created_at.desc()],
+        "popular": [Listing.view_count.desc(), Listing.save_count.desc(), Listing.created_at.desc()],
+        "featured": [Listing.is_featured.desc(), Listing.published_at.desc(), Listing.created_at.desc()],
+    }
+    query = query.order_by(
+        *order_map.get(sort_by, order_map["newest"])).offset(skip).limit(limit)
     result = await db.execute(query)
     items = list(result.scalars().all())
 
     return items, total
+
+
+async def get_featured_listings(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 20,
+) -> tuple[list[Listing], int]:
+    return await search_listings(
+        db,
+        status=ListingStatus.ACTIVE,
+        sort_by="featured",
+        featured_only=True,
+        skip=skip,
+        limit=limit,
+    )
+
+
+async def get_related_listings(
+    db: AsyncSession,
+    listing: Listing,
+    skip: int = 0,
+    limit: int = 8,
+) -> tuple[list[Listing], int]:
+    count_result = await db.execute(
+        select(func.count()).select_from(Listing).where(
+            Listing.status == ListingStatus.ACTIVE,
+            Listing.id != listing.id,
+            Listing.category_id == listing.category_id,
+        )
+    )
+    total = count_result.scalar_one()
+
+    result = await db.execute(
+        select(Listing)
+        .where(
+            Listing.status == ListingStatus.ACTIVE,
+            Listing.id != listing.id,
+            Listing.category_id == listing.category_id,
+        )
+        .order_by(
+            Listing.is_featured.desc(),
+            Listing.view_count.desc(),
+            Listing.created_at.desc(),
+        )
+        .offset(skip)
+        .limit(limit)
+    )
+    return list(result.scalars().all()), int(total)
+
+
+async def get_listing_suggestions(
+    db: AsyncSession,
+    keyword: str,
+    limit: int = 10,
+) -> list[str]:
+    result = await db.execute(
+        select(Listing.title)
+        .where(
+            Listing.status == ListingStatus.ACTIVE,
+            Listing.title.ilike(f"%{keyword}%"),
+        )
+        .order_by(Listing.view_count.desc(), Listing.created_at.desc())
+        .limit(limit)
+    )
+    return [row[0] for row in result.all() if row[0]]
+
+
+async def get_price_band_summary(
+    db: AsyncSession,
+    category_id: Optional[str] = None,
+) -> list[dict[str, object]]:
+    bands = [
+        {"label": "Dưới 1 triệu", "min_price": 0, "max_price": 1_000_000},
+        {"label": "1 - 3 triệu", "min_price": 1_000_000, "max_price": 3_000_000},
+        {"label": "3 - 5 triệu", "min_price": 3_000_000, "max_price": 5_000_000},
+        {"label": "5 - 10 triệu", "min_price": 5_000_000, "max_price": 10_000_000},
+        {"label": "Trên 10 triệu", "min_price": 10_000_000, "max_price": None},
+    ]
+
+    base_filters = [Listing.status == ListingStatus.ACTIVE]
+    if category_id:
+        base_filters.append(Listing.category_id == _to_uuid(category_id))
+
+    summary: list[dict[str, object]] = []
+    for band in bands:
+        band_filters = list(base_filters)
+        if band["min_price"] is not None:
+            band_filters.append(Listing.price >= band["min_price"])
+        if band["max_price"] is not None:
+            band_filters.append(Listing.price < band["max_price"])
+
+        count_result = await db.execute(
+            select(func.count()).select_from(Listing).where(*band_filters)
+        )
+        summary.append({
+            **band,
+            "count": int(count_result.scalar_one()),
+        })
+
+    return summary
 
 
 async def get_listing_image(

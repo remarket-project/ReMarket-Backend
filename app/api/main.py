@@ -9,6 +9,9 @@ from app.api.routes import (
     orders,
     reviews,
     admin,
+    admin_audit,
+    chat,
+    saved_follow,
     notifications,
     content,
     websocket,
@@ -34,6 +37,9 @@ api_router.include_router(offers.router)
 api_router.include_router(orders.router)
 api_router.include_router(reviews.router)
 api_router.include_router(admin.router)
+api_router.include_router(admin_audit.router)
+api_router.include_router(chat.router)
+api_router.include_router(saved_follow.router)
 api_router.include_router(notifications.router)
 api_router.include_router(content.router)
 

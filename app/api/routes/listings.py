@@ -1,12 +1,13 @@
 import uuid
 import os
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Literal, Optional
+
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.future import select
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from pydantic import BaseModel
 
 from app.api.deps import CurrentUser, SessionDep
 from app.core.config import settings
@@ -35,6 +36,27 @@ ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 
+class PriceBandRead(BaseModel):
+    label: str
+    min_price: int | None
+    max_price: int | None
+    count: int
+
+
+def _listing_with_images_payload(listing, images):
+    listing_dict = listing.model_dump()
+    listing_dict["images"] = images
+    return ListingWithImages(**listing_dict)
+
+
+async def _fetch_listing_with_images(db: SessionDep, listing_id: uuid.UUID) -> ListingWithImages:
+    listing = await crud_listing.get_listing(db, str(listing_id))
+    if not listing:
+        raise HTTPException(status_code=404, detail="Bài đăng không tìm thấy")
+    images = await crud_listing.get_listing_images(db, str(listing.id))
+    return _listing_with_images_payload(listing, images)
+
+
 @router.get("", response_model=ListingPaginated, include_in_schema=False)
 @router.get("/", response_model=ListingPaginated)
 async def list_listings(
@@ -44,6 +66,8 @@ async def list_listings(
     seller_id: Optional[uuid.UUID] = None,
     min_price: Optional[float] = Query(None, ge=0),
     max_price: Optional[float] = Query(None, ge=0),
+    sort_by: Literal["newest", "oldest", "price_asc",
+                     "price_desc", "popular", "featured"] = "newest",
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100)
 ):
@@ -57,6 +81,7 @@ async def list_listings(
         min_price=min_price,
         max_price=max_price,
         status=ListingStatus.ACTIVE,
+        sort_by=sort_by,
         skip=skip,
         limit=limit
     )
@@ -66,9 +91,10 @@ async def list_listings(
 
     listings_with_images = []
     for item in items:
-        listing_dict = item.model_dump()
-        listing_dict["images"] = images_by_listing.get(item.id, [])
-        listings_with_images.append(ListingWithImages(**listing_dict))
+        listings_with_images.append(
+            _listing_with_images_payload(
+                item, images_by_listing.get(item.id, []))
+        )
 
     return ListingPaginated(
         items=listings_with_images,
@@ -76,6 +102,66 @@ async def list_listings(
         skip=skip,
         limit=limit
     )
+
+
+@router.get("/featured", response_model=ListingPaginated)
+async def get_featured_listings(
+    db: SessionDep,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+):
+    items, total = await crud_listing.get_featured_listings(db, skip=skip, limit=limit)
+    listing_ids = [item.id for item in items]
+    images_by_listing = await crud_listing.get_images_for_listings(db, listing_ids)
+    return ListingPaginated(
+        items=[_listing_with_images_payload(
+            item, images_by_listing.get(item.id, [])) for item in items],
+        total=total,
+        skip=skip,
+        limit=limit,
+    )
+
+
+@router.get("/trending", response_model=ListingPaginated)
+async def get_trending_listings(
+    db: SessionDep,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+):
+    items, total = await crud_listing.search_listings(
+        db,
+        status=ListingStatus.ACTIVE,
+        sort_by="popular",
+        skip=skip,
+        limit=limit,
+    )
+    listing_ids = [item.id for item in items]
+    images_by_listing = await crud_listing.get_images_for_listings(db, listing_ids)
+    return ListingPaginated(
+        items=[_listing_with_images_payload(
+            item, images_by_listing.get(item.id, [])) for item in items],
+        total=total,
+        skip=skip,
+        limit=limit,
+    )
+
+
+@router.get("/search-suggestions", response_model=list[str])
+async def get_search_suggestions(
+    db: SessionDep,
+    q: str = Query(..., min_length=1, max_length=100),
+    limit: int = Query(10, ge=1, le=20),
+):
+    return await crud_listing.get_listing_suggestions(db, q, limit=limit)
+
+
+@router.get("/price-bands", response_model=list[PriceBandRead])
+async def get_price_band_summary(
+    db: SessionDep,
+    category_id: Optional[uuid.UUID] = None,
+):
+    summary = await crud_listing.get_price_band_summary(db, category_id=str(category_id) if category_id else None)
+    return [PriceBandRead.model_validate(item) for item in summary]
 
 
 @router.get("/me", response_model=ListingPaginated)
@@ -114,6 +200,29 @@ async def get_my_listings(
     )
 
 
+@router.get("/{listing_id}/related", response_model=ListingPaginated)
+async def get_related_listings(
+    listing_id: uuid.UUID,
+    db: SessionDep,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(8, ge=1, le=20),
+):
+    listing = await crud_listing.get_listing(db, str(listing_id))
+    if not listing:
+        raise HTTPException(status_code=404, detail="Bài đăng không tìm thấy")
+
+    items, total = await crud_listing.get_related_listings(db, listing, skip=skip, limit=limit)
+    listing_ids = [item.id for item in items]
+    images_by_listing = await crud_listing.get_images_for_listings(db, listing_ids)
+    return ListingPaginated(
+        items=[_listing_with_images_payload(
+            item, images_by_listing.get(item.id, [])) for item in items],
+        total=total,
+        skip=skip,
+        limit=limit,
+    )
+
+
 @router.delete("/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_listing_image_route(
     current_user: CurrentUser,
@@ -148,15 +257,7 @@ async def get_listing(
     db: SessionDep
 ):
     """Lấy chi tiết bài đăng"""
-    item = await crud_listing.get_listing(db, str(listing_id))
-    if not item:
-        raise HTTPException(status_code=404, detail="Bài đăng không tìm thấy")
-
-    images = await crud_listing.get_listing_images(db, str(item.id))
-
-    listing_dict = item.model_dump()
-    listing_dict["images"] = images
-    return ListingWithImages(**listing_dict)
+    return await _fetch_listing_with_images(db, listing_id)
 
 
 @router.post("", response_model=ListingRead, status_code=status.HTTP_201_CREATED, include_in_schema=False)
@@ -323,7 +424,8 @@ async def upload_listing_image(
                 status_code=500, detail=f"Error uploading to MinIO: {str(e)}")
     else:
         # Use local filesystem
-        file_path = os.path.abspath(os.path.join(ABS_UPLOAD_DIR, unique_filename))
+        file_path = os.path.abspath(
+            os.path.join(ABS_UPLOAD_DIR, unique_filename))
         if not file_path.startswith(f"{ABS_UPLOAD_DIR}{os.sep}"):
             raise HTTPException(
                 status_code=400, detail="Đường dẫn upload không hợp lệ")

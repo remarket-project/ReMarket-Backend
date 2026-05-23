@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import CurrentUser, SessionDep, CurrentAdmin
 from app.crud import crud_escrow, crud_wallet, crud_order
-from app.models.enums import EscrowStatus, TransactionType
+from app.models.enums import EscrowStatus, TransactionType, UserRole, OrderStatus
 from app.schemas.escrow import EscrowRead, OpenDisputeRequest
 from app.core.websocket_manager import ws_manager
 from app.crud.crud_notification import create_notification
@@ -213,7 +213,7 @@ async def request_refund(
     from app.crud.crud_user import get_users_list
     admins = await get_users_list(db, limit=1000)
     admin_ids = [str(a.id)
-                 for a in admins if hasattr(a, "role") and a.role == "admin"]
+                 for a in admins if hasattr(a, "role") and a.role == UserRole.ADMIN]
 
     for admin_id in admin_ids:
         notification = await create_notification(
@@ -390,7 +390,7 @@ async def confirm_release(
 
     # Update order status to COMPLETED
     from app.crud.crud_order import update_order_status
-    await update_order_status(db, order_id, "COMPLETED")
+    await update_order_status(db, order_id, OrderStatus.COMPLETED)
 
     # Send notifications
     buyer_notification = await create_notification(
@@ -497,7 +497,7 @@ async def open_dispute(
     from app.crud.crud_user import get_users_list
     admins = await get_users_list(db, limit=1000)
     admin_ids = [str(a.id)
-                 for a in admins if hasattr(a, 'role') and a.role == "admin"]
+                 for a in admins if hasattr(a, 'role') and a.role == UserRole.ADMIN]
 
     for admin_id in admin_ids:
         notification = await create_notification(

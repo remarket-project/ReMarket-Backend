@@ -1,14 +1,13 @@
 import uuid
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Body
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select
 
 from app.api.deps import CurrentUser, SessionDep, CurrentAdmin
-from app.crud import crud_notification, crud_listing, crud_escrow, crud_wallet, crud_order
+from app.crud import crud_admin_audit, crud_notification, crud_listing, crud_escrow, crud_wallet, crud_order
 from app.crud.crud_listing import get_listing, get_pending_listings
 from app.crud.crud_user import get_user_by_id, get_users_list, update_user_status
-from app.models.enums import ListingStatus, NotificationType, UserRole
+from app.models.enums import EscrowStatus, ListingStatus, NotificationType, OrderStatus, UserRole
 from app.models.listing import Listing
 from app.models.order import Order
 from app.models.escrow import Escrow
@@ -18,6 +17,24 @@ from app.schemas.listing import ListingRead
 from app.schemas.user import UserMe, UserStatusUpdate
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
+
+async def _log_admin_action(
+    db: SessionDep,
+    admin_user: User,
+    action: str,
+    target_type: str,
+    target_id: str,
+    note: Optional[str] = None,
+) -> None:
+    await crud_admin_audit.create_admin_audit_log(
+        db=db,
+        admin_id=admin_user.id,
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        note=note,
+    )
 
 
 @router.get("/dashboard")
@@ -33,7 +50,7 @@ async def get_dashboard_stats(
         await db.execute(
             select(func.count())
             .select_from(Escrow)
-            .where(Escrow.status == "disputed")
+            .where(Escrow.status == EscrowStatus.DISPUTED.value)
         )
     ).scalar_one()
 
@@ -77,6 +94,14 @@ async def update_user_account_status(
             status_code=404, detail="Người dùng không tìm thấy")
 
     updated_user = await update_user_status(db, str(user_id), status_data.is_active)
+    await _log_admin_action(
+        db,
+        admin_user,
+        action="user_status_updated",
+        target_type="user",
+        target_id=str(user_id),
+        note=f"is_active={status_data.is_active}",
+    )
     return updated_user
 
 
@@ -128,6 +153,13 @@ async def approve_listing(
         message=f"Bài đăng '{listing.title}' của bạn đã được duyệt.",
         data={"listing_id": str(listing.id)},
     )
+    await _log_admin_action(
+        db,
+        admin_user,
+        action="listing_approved",
+        target_type="listing",
+        target_id=str(listing.id),
+    )
     return listing
 
 
@@ -166,6 +198,14 @@ async def reject_listing_route(
         title="Bài đăng bị từ chối",
         message=message,
         data={"listing_id": str(listing.id), "reason": reason or ""},
+    )
+    await _log_admin_action(
+        db,
+        admin_user,
+        action="listing_rejected",
+        target_type="listing",
+        target_id=str(listing.id),
+        note=reason,
     )
     return listing
 
@@ -212,13 +252,13 @@ async def resolve_escrow_dispute(
     )
 
     if payload.result == "release":
-        await crud_order.update_order_status(db, order_id, "COMPLETED")
+        await crud_order.update_order_status(db, order_id, OrderStatus.COMPLETED)
         buyer_title = "Tranh chấp được xử lý"
         buyer_message = "Admin đã xử lý tranh chấp: tiền được giải phóng cho người bán."
         seller_title = "Nhận thanh toán escrow"
         seller_message = "Admin đã xử lý tranh chấp và giải phóng thanh toán cho bạn."
     else:
-        await crud_order.update_order_status(db, order_id, "CANCELLED")
+        await crud_order.update_order_status(db, order_id, OrderStatus.CANCELLED)
         buyer_title = "Hoàn tiền escrow thành công"
         buyer_message = "Admin đã xử lý tranh chấp và hoàn tiền vào ví của bạn."
         seller_title = "Tranh chấp được xử lý"
@@ -241,6 +281,15 @@ async def resolve_escrow_dispute(
         message=seller_message,
         data={"order_id": str(
             order_id), "escrow_result": payload.result, "note": payload.note or ""},
+    )
+
+    await _log_admin_action(
+        db,
+        admin_user,
+        action=f"escrow_resolved_{payload.result}",
+        target_type="escrow",
+        target_id=str(order_id),
+        note=payload.note,
     )
 
     return {
