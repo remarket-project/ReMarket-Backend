@@ -79,6 +79,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     passlib[bcrypt]>=1.7.4 \
     asyncpg>=0.29.0 \
     slowapi>=0.1.9 \
+    minio>=7.2.0 \
     uvicorn[standard]>=0.24.0
 
 # Production image

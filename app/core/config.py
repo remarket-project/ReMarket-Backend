@@ -149,6 +149,7 @@ class Settings(BaseSettings):
     MINIO_SECRET_KEY: str | None = None
     MINIO_BUCKET_NAME: str = "listings"
     MINIO_USE_SSL: bool = False
+    MINIO_PUBLIC_ENDPOINT: str | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property

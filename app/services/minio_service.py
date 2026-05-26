@@ -34,12 +34,27 @@ class MinIOService:
         self.bucket_name = settings.MINIO_BUCKET_NAME
 
     def ensure_bucket_exists(self) -> None:
-        """Create bucket if it doesn't exist"""
+        """Create bucket if it doesn't exist and set public policy"""
+        import json
         try:
             if not self.client.bucket_exists(self.bucket_name):
                 self.client.make_bucket(self.bucket_name)
+            
+            # Set bucket policy to public read
+            policy = {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": ["*"]},
+                        "Action": ["s3:GetObject"],
+                        "Resource": [f"arn:aws:s3:::{self.bucket_name}/*"]
+                    }
+                ]
+            }
+            self.client.set_bucket_policy(self.bucket_name, json.dumps(policy))
         except S3Error as e:
-            print(f"Error creating bucket: {e}")
+            print(f"Error creating/configuring bucket: {e}")
 
     def upload_file(
         self,
@@ -67,6 +82,11 @@ class MinIOService:
                 content_type=content_type,
             )
 
+            # Generate public URL if endpoint is configured
+            if settings.MINIO_PUBLIC_ENDPOINT:
+                endpoint = settings.MINIO_PUBLIC_ENDPOINT.rstrip("/")
+                return f"{endpoint}/{self.bucket_name}/{file_path}"
+
             # Generate presigned URL (valid for 7 days)
             url = self.client.get_presigned_url(
                 "GET",
@@ -91,7 +111,11 @@ class MinIOService:
     def get_presigned_url(
         self, file_path: str, expires: Optional[timedelta] = None
     ) -> str:
-        """Get presigned URL for file"""
+        """Get presigned URL or public URL for file"""
+        if settings.MINIO_PUBLIC_ENDPOINT:
+            endpoint = settings.MINIO_PUBLIC_ENDPOINT.rstrip("/")
+            return f"{endpoint}/{self.bucket_name}/{file_path}"
+
         if expires is None:
             expires = timedelta(days=7)
 

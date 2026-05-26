@@ -93,6 +93,13 @@ app.add_middleware(
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+# Serve uploaded files from local filesystem when not using MinIO
+if not settings.use_minio:
+    from fastapi.staticfiles import StaticFiles
+    import os
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    app.mount(f"/{settings.UPLOAD_DIR}", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
+
 # Add health check for Docker
 utils_router = APIRouter(prefix="/utils", tags=["Utils"])
 

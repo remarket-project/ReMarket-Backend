@@ -63,13 +63,15 @@ class ListingImageRead(BaseModel):
 class ListingWithImages(ListingRead):
     """Response schema for listing with images"""
     images: List[ListingImageRead] = []
+    seller_name: Optional[str] = None
+    seller_avatar_url: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
 
 class ListingPaginated(BaseModel):
     """Response schema for paginated listings"""
-    items: List[ListingRead] = []
+    items: List[ListingWithImages] = []
     total: int
     skip: int
     limit: int

@@ -10,6 +10,7 @@ from typing import Optional
 from sqlalchemy import delete, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm import joinedload
 
 from app.models.enums import ListingStatus
 from app.models.listing import Listing, ListingImage
@@ -50,7 +51,7 @@ async def create_listing(
 async def get_listing(db: AsyncSession, listing_id: str) -> Optional[Listing]:
     """Get listing by ID."""
     result = await db.execute(
-        select(Listing).where(Listing.id == _to_uuid(listing_id))
+        select(Listing).options(joinedload(Listing.seller)).where(Listing.id == _to_uuid(listing_id))
     )
     return result.scalar_one_or_none()
 
@@ -192,14 +193,14 @@ async def search_listings(
     seller_id: Optional[str] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
-    status: ListingStatus = ListingStatus.ACTIVE,
+    status: Optional[ListingStatus] = ListingStatus.ACTIVE,
     sort_by: str = "newest",
     featured_only: bool = False,
     skip: int = 0,
     limit: int = 100
 ) -> tuple[list[Listing], int]:
     """Search listings with filters."""
-    query = select(Listing)
+    query = select(Listing).options(joinedload(Listing.seller))
     count_query = select(func.count()).select_from(Listing)
 
     conditions = []
@@ -284,6 +285,7 @@ async def get_related_listings(
 
     result = await db.execute(
         select(Listing)
+        .options(joinedload(Listing.seller))
         .where(
             Listing.status == ListingStatus.ACTIVE,
             Listing.id != listing.id,

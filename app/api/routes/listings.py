@@ -46,6 +46,9 @@ class PriceBandRead(BaseModel):
 def _listing_with_images_payload(listing, images):
     listing_dict = listing.model_dump()
     listing_dict["images"] = images
+    if getattr(listing, "seller", None):
+        listing_dict["seller_name"] = listing.seller.full_name
+        listing_dict["seller_avatar_url"] = listing.seller.avatar_url
     return ListingWithImages(**listing_dict)
 
 
@@ -188,9 +191,10 @@ async def get_my_listings(
 
     listings_with_images = []
     for item in items:
-        listing_dict = item.model_dump()
-        listing_dict["images"] = images_by_listing.get(item.id, [])
-        listings_with_images.append(ListingWithImages(**listing_dict))
+        listings_with_images.append(
+            _listing_with_images_payload(
+                item, images_by_listing.get(item.id, []))
+        )
 
     return ListingPaginated(
         items=listings_with_images,
@@ -235,6 +239,9 @@ async def delete_listing_image_route(
         raise HTTPException(status_code=404, detail="Ảnh không tìm thấy")
 
     listing = await crud_listing.get_listing(db, str(image.listing_id))
+    if not listing:
+        raise HTTPException(status_code=404, detail="Bài đăng không tìm thấy")
+
     if str(listing.seller_id) != str(current_user.id) and current_user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=403, detail="Không có quyền xóa ảnh này")
@@ -270,7 +277,7 @@ async def create_listing(
     data: ListingCreate,
 ):
     """Tạo bài đăng mới (trạng thái = PENDING)"""
-    category = await crud_category.get_category_by_id(db, str(data.category_id))
+    category = await crud_category.get_category_by_id(db, data.category_id)
     if not category:
         raise HTTPException(status_code=404, detail="Danh mục không tìm thấy")
 
@@ -316,8 +323,8 @@ async def update_listing(
     if current_user.role != UserRole.ADMIN:
         result = await db.execute(
             select(Offer).where(
-                Offer.listing_id == listing.id,
-                Offer.status.in_([OfferStatus.PENDING, OfferStatus.COUNTERED])
+                Offer.listing_id == listing.id,  # type: ignore
+                Offer.status.in_([OfferStatus.PENDING, OfferStatus.COUNTERED])  # type: ignore
             )
         )
         active_offers = result.scalars().first()
@@ -333,7 +340,7 @@ async def update_listing(
                 status_code=403, detail="Chỉ admin có thể thay đổi trạng thái")
 
     if data.category_id is not None:
-        category = await crud_category.get_category_by_id(db, str(data.category_id))
+        category = await crud_category.get_category_by_id(db, data.category_id)
         if not category:
             raise HTTPException(
                 status_code=404, detail="Danh mục không tìm thấy")
@@ -417,9 +424,11 @@ async def upload_listing_image(
             image_url = minio_service.upload_file(
                 file_path,
                 file_bytes,
-                content_type=file.content_type,
+                content_type=file.content_type or "application/octet-stream",
             )
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             raise HTTPException(
                 status_code=500, detail=f"Error uploading to MinIO: {str(e)}")
     else:
