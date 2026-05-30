@@ -1,10 +1,11 @@
 import secrets
 import warnings
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     BeforeValidator,
     EmailStr,
+    Field,
     HttpUrl,
     PostgresDsn,
     computed_field,
@@ -15,11 +16,19 @@ from typing_extensions import Self
 from pathlib import Path
 
 
-def parse_cors(v: Any) -> list[str] | str:
-    if isinstance(v, str) and not v.startswith("["):
+def parse_cors(v: Any) -> list[str]:
+    if isinstance(v, str):
+        if v.startswith("[") and v.endswith("]"):
+            import json
+            try:
+                result = json.loads(v)
+                if isinstance(result, list):
+                    return [str(i).strip() for i in result]
+            except json.JSONDecodeError:
+                pass
         return [i.strip() for i in v.split(",") if i.strip()]
-    elif isinstance(v, list | str):
-        return v
+    elif isinstance(v, list):
+        return [str(i).strip() for i in v]
     raise ValueError(v)
 
 
@@ -76,28 +85,19 @@ class Settings(BaseSettings):
         return f"postgresql+psycopg://{self.POSTGRES_USER}:{encoded_password}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     # CORS
-    BACKEND_CORS_ORIGINS: list[str] | str = [
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-    ]
+    BACKEND_CORS_ORIGINS: Annotated[list[str], BeforeValidator(parse_cors)] = Field(
+        default=[
+            "http://localhost:5173",
+            "http://localhost:3000",
+            "http://127.0.0.1:5173",
+        ],
+        validate_default=True,
+    )
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def cors_origins(self) -> list[str]:
-        """Parse CORS origins from list or comma-separated string."""
-        if isinstance(self.BACKEND_CORS_ORIGINS, str):
-            if self.BACKEND_CORS_ORIGINS.startswith("[") and self.BACKEND_CORS_ORIGINS.endswith("]"):
-                import json
-                try:
-                    return json.loads(self.BACKEND_CORS_ORIGINS)
-                except Exception:
-                    pass
-            return [
-                origin.strip()
-                for origin in self.BACKEND_CORS_ORIGINS.split(",")
-                if origin.strip()
-            ]
+        """Strip trailing slashes from CORS origins."""
         return [origin.rstrip("/") for origin in self.BACKEND_CORS_ORIGINS]
 
     # Redis (optional - for real-time multi-instance)
@@ -139,6 +139,7 @@ class Settings(BaseSettings):
     # Admin
     FIRST_SUPERUSER: EmailStr | None = None
     FIRST_SUPERUSER_PASSWORD: str | None = None
+    EMAIL_TEST_USER: str = "test@remarket.vn"
 
     # File Upload
     UPLOAD_DIR: str = "uploads"

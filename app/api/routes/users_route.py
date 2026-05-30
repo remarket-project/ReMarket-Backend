@@ -329,7 +329,7 @@ async def list_users(
     - 401: Unauthorized
     - 403: Not admin
     """
-    users = await crud_user.get_users(session, skip=skip, limit=limit)
+    users = await crud_user.get_users_list(session, skip=skip, limit=limit)
     count = await crud_user.get_users_count(session)
 
     return UsersPublic(data=users, count=count)

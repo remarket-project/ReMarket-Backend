@@ -20,7 +20,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # Create services directory if it doesn't exist
 _services_dir = Path(__file__).parent / "services"
 _services_dir.mkdir(parents=True, exist_ok=True)
-(_services_dir / "__init__.py").touch()
+_services_init = _services_dir / "__init__.py"
+if not _services_init.exists():
+    _services_init.touch()
 
 # Create email_service.py
 _email_service_file = _services_dir / "email_service.py"

@@ -16,12 +16,9 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
-# Create services directory on app startup
+# Create services directory on app startup (__init__.py is handled by backend_pre_start.py)
 _services_dir = Path(__file__).parent / "services"
 _services_dir.mkdir(parents=True, exist_ok=True)
-_services_init = _services_dir / "__init__.py"
-if not _services_init.exists():
-    _services_init.touch()
 
 
 logger = logging.getLogger(__name__)

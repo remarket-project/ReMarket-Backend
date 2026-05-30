@@ -130,6 +130,8 @@ async def update_listing(
     price=None,
     is_negotiable: Optional[bool] = None,
     condition_grade=None,
+    category_id: Optional[str] = None,
+    status: Optional[ListingStatus] = None,
 ) -> Optional[Listing]:
     """Update a listing (partial update)."""
     update_data = {}
@@ -143,6 +145,10 @@ async def update_listing(
         update_data["is_negotiable"] = is_negotiable
     if condition_grade is not None:
         update_data["condition_grade"] = condition_grade
+    if category_id is not None:
+        update_data["category_id"] = _to_uuid(category_id)
+    if status is not None:
+        update_data["status"] = status
 
     if not update_data:
         return await get_listing(db, listing_id)
@@ -184,6 +190,14 @@ async def soft_delete_listing(db: AsyncSession, listing_id: str) -> None:
         )
     )
     await db.commit()
+
+
+async def hard_delete_listing(db: AsyncSession, listing_id: str) -> None:
+    """Permanently delete a listing and all related data (cascades images, offers, orders)."""
+    listing = await db.get(Listing, _to_uuid(listing_id))
+    if listing:
+        await db.delete(listing)
+        await db.commit()
 
 
 async def search_listings(

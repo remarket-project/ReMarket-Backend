@@ -33,9 +33,9 @@ class Offer(SQLModel, table=True):
     )
 
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc))
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc))
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     listing: "Listing" = Relationship(back_populates="offers")

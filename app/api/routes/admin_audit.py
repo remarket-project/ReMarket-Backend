@@ -3,7 +3,7 @@ from datetime import datetime
 import uuid
 
 from fastapi import APIRouter, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.api.deps import CurrentAdmin, SessionDep
 from app.crud import crud_admin_audit
@@ -12,6 +12,8 @@ router = APIRouter(prefix="/admin", tags=["Admin Audit"])
 
 
 class AdminAuditLogRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     admin_id: uuid.UUID
     action: str

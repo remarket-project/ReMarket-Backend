@@ -335,7 +335,7 @@ async def update_listing(
             )
 
     if data.status is not None and current_user.role != UserRole.ADMIN:
-        if data.status != ListingStatus.HIDDEN:
+        if data.status not in (ListingStatus.HIDDEN, ListingStatus.ACTIVE, ListingStatus.SOLD):
             raise HTTPException(
                 status_code=403, detail="Chỉ admin có thể thay đổi trạng thái")
 
@@ -353,6 +353,8 @@ async def update_listing(
         price=data.price,
         is_negotiable=data.is_negotiable,
         condition_grade=data.condition_grade,
+        category_id=str(data.category_id) if data.category_id else None,
+        status=data.status,
     )
     return updated_listing
 
@@ -365,7 +367,7 @@ async def delete_listing(
     request: Request,
     listing_id: uuid.UUID,
 ):
-    """Xóa bài đăng (ẩn)"""
+    """Xóa bài đăng (vĩnh viễn)"""
     listing = await crud_listing.get_listing(db, str(listing_id))
     if not listing:
         raise HTTPException(status_code=404, detail="Bài đăng không tìm thấy")
@@ -378,7 +380,7 @@ async def delete_listing(
         raise HTTPException(
             status_code=400, detail="Không thể xóa bài đăng đã bán")
 
-    await crud_listing.soft_delete_listing(db, str(listing_id))
+    await crud_listing.hard_delete_listing(db, str(listing_id))
     return None
 
 

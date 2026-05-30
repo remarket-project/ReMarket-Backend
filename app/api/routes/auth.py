@@ -123,7 +123,6 @@ async def register(request: Request, data: UserRegister, session: SessionDep) ->
     summary="User login",
     description="Authenticate user and return JWT tokens. Compatible with OAuth2 password flow."
 )
-@limiter.limit("5/15minutes")
 async def login(request: Request, session: SessionDep, credentials: Annotated[OAuth2PasswordRequestForm, Depends()]) -> TokenResponse:
     """
     User login with email and password.

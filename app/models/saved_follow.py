@@ -6,7 +6,7 @@ from sqlmodel import Field, SQLModel
 
 
 def now():
-    return datetime.now(timezone.utc)
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class SavedListing(SQLModel, table=True):

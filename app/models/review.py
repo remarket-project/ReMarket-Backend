@@ -32,7 +32,7 @@ class Review(SQLModel, table=True):
     comment: Optional[str] = None
 
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc))
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     order: "Order" = Relationship(back_populates="reviews")
