@@ -6,7 +6,7 @@ from sqlmodel import Session, select
 from app.core.config import settings
 from app.core.db import engine
 from app.core.security import get_password_hash
-from app.models import User, Category, StaticContent, UserRole
+from app.models import Category, StaticContent, User, UserRole
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

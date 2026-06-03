@@ -1,3 +1,8 @@
+import logging
+import subprocess
+import sys
+from pathlib import Path
+
 from sqlalchemy import Engine, text
 from sqlmodel import Session
 from tenacity import (
@@ -7,12 +12,9 @@ from tenacity import (
     stop_after_attempt,
     wait_fixed,
 )
+
 from app.core.db import engine
 from app.initial_data import init_db_data
-import subprocess
-import logging
-from pathlib import Path
-import sys
 
 # Add app directory to path for Docker container BEFORE any app imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))

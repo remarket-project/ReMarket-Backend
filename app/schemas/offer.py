@@ -1,8 +1,9 @@
 import uuid
-from decimal import Decimal
-from typing import Optional
 from datetime import datetime
+from decimal import Decimal
+
 from pydantic import BaseModel, Field
+
 from app.models.enums import OfferStatus
 
 
@@ -23,6 +24,7 @@ class OfferRead(OfferBase):
     status: OfferStatus
     created_at: datetime
     updated_at: datetime
+    order_id: uuid.UUID | None = None
 
     model_config = {"from_attributes": True}
 
@@ -30,15 +32,15 @@ class OfferRead(OfferBase):
 class OfferStatusUpdate(BaseModel):
     status: OfferStatus = Field(
         ..., description="New status for the offer (ACCEPTED, REJECTED, COUNTERED)")
-    offer_price: Optional[Decimal] = Field(
+    offer_price: Decimal | None = Field(
         default=None, gt=0, decimal_places=2)
 
 
 class OfferReadWithDetails(OfferRead):
     """Offer with buyer and listing info for frontend display"""
-    buyer_name: Optional[str] = None
-    listing_title: Optional[str] = None
-    listing_price: Optional[Decimal] = None
-    listing_negotiable: Optional[bool] = None
+    buyer_name: str | None = None
+    listing_title: str | None = None
+    listing_price: Decimal | None = None
+    listing_negotiable: bool | None = None
 
     model_config = {"from_attributes": True}

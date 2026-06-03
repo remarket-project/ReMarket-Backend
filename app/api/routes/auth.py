@@ -3,45 +3,42 @@ Auth API endpoints.
 
 Handles user registration, login, token refresh, and logout.
 """
-from datetime import timedelta
-from typing import Any, Annotated
 import uuid
+from datetime import timedelta
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
+from jwt.exceptions import InvalidTokenError
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from app.api.deps import CurrentUser, SessionDep, TokenDep
+from app.api.deps import CurrentUser, SessionDep
 from app.core.config import settings
 from app.core.security import (
     create_access_token,
-    create_refresh_token,
-    get_password_hash,
-    hash_token,
-    verify_token_hash,
-    verify_password,
     create_email_verification_token,
-    decode_email_verification_token,
     create_password_reset_token,
+    create_refresh_token,
+    decode_email_verification_token,
     decode_password_reset_token,
+    get_password_hash,
+    verify_password,
+    verify_token_hash,
 )
 from app.crud import crud_user
-from app.models import User, UserRole, TokenPayload
-from app.schemas.auth import (
-    RefreshTokenRequest,
-    TokenResponse,
-    MessageResponse,
-    VerifyEmailRequest,
-    ResendVerificationRequest,
-    ForgotPasswordRequest,
-    ResetPasswordRequest,
-)
 from app.models import UserRegister
+from app.schemas.auth import (
+    ForgotPasswordRequest,
+    MessageResponse,
+    RefreshTokenRequest,
+    ResendVerificationRequest,
+    ResetPasswordRequest,
+    TokenResponse,
+    VerifyEmailRequest,
+)
 from app.services.email_service import send_password_reset_email
-
-import jwt
-from jwt.exceptions import InvalidTokenError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 limiter = Limiter(key_func=get_remote_address)

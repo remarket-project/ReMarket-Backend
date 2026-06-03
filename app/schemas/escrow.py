@@ -4,9 +4,9 @@ Escrow schemas for request/response validation.
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional, Literal
-from pydantic import BaseModel, Field
+from typing import Literal
 
+from pydantic import BaseModel, Field
 
 # ============================================================================
 # Request Schemas
@@ -24,7 +24,7 @@ class ResolveEscrowRequest(BaseModel):
         ...,
         description="release: transfer to seller, refund: return funds to buyer"
     )
-    note: Optional[str] = Field(
+    note: str | None = Field(
         default=None,
         max_length=500,
         description="Optional admin note"
@@ -43,16 +43,16 @@ class EscrowRead(BaseModel):
     status: str
     buyer_wallet_id: uuid.UUID
     seller_wallet_id: uuid.UUID
-    dispute_reason: Optional[str]
-    dispute_opened_at: Optional[datetime]
-    admin_resolved_by: Optional[uuid.UUID]
-    admin_notes: Optional[str]
-    resolution_reason: Optional[str]
-    resolved_at: Optional[datetime]
-    dispute_status: Optional[str]
-    funded_at: Optional[datetime]
-    release_requested_at: Optional[datetime]
-    released_at: Optional[datetime]
+    dispute_reason: str | None
+    dispute_opened_at: datetime | None
+    admin_resolved_by: uuid.UUID | None
+    admin_notes: str | None
+    resolution_reason: str | None
+    resolved_at: datetime | None
+    dispute_status: str | None
+    funded_at: datetime | None
+    release_requested_at: datetime | None
+    released_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

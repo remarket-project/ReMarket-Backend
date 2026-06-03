@@ -1,14 +1,15 @@
 import uuid
-from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
+
 from pydantic import BaseModel, Field
+
 from app.models.enums import ConditionGrade, ListingStatus
 
 
 class ListingBase(BaseModel):
     title: str = Field(..., max_length=500, min_length=5)
-    description: Optional[str] = None
+    description: str | None = None
     price: Decimal = Field(..., decimal_places=2)
     is_negotiable: bool = True
     condition_grade: ConditionGrade
@@ -20,25 +21,25 @@ class ListingCreate(ListingBase):
 
 
 class ListingUpdate(BaseModel):
-    title: Optional[str] = Field(None, max_length=500, min_length=5)
-    description: Optional[str] = None
-    price: Optional[Decimal] = None
-    is_negotiable: Optional[bool] = None
-    condition_grade: Optional[ConditionGrade] = None
-    category_id: Optional[uuid.UUID] = None
-    status: Optional[ListingStatus] = None
+    title: str | None = Field(None, max_length=500, min_length=5)
+    description: str | None = None
+    price: Decimal | None = None
+    is_negotiable: bool | None = None
+    condition_grade: ConditionGrade | None = None
+    category_id: uuid.UUID | None = None
+    status: ListingStatus | None = None
 
 
 class ListingRead(ListingBase):
     id: uuid.UUID
     seller_id: uuid.UUID
     status: ListingStatus
-    rejection_reason: Optional[str] = None
+    rejection_reason: str | None = None
     view_count: int = 0
     save_count: int = 0
     is_featured: bool = False
-    published_at: Optional[datetime] = None
-    location_summary: Optional[str] = None
+    published_at: datetime | None = None
+    location_summary: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -62,16 +63,16 @@ class ListingImageRead(BaseModel):
 
 class ListingWithImages(ListingRead):
     """Response schema for listing with images"""
-    images: List[ListingImageRead] = []
-    seller_name: Optional[str] = None
-    seller_avatar_url: Optional[str] = None
+    images: list[ListingImageRead] = []
+    seller_name: str | None = None
+    seller_avatar_url: str | None = None
 
     model_config = {"from_attributes": True}
 
 
 class ListingPaginated(BaseModel):
     """Response schema for paginated listings"""
-    items: List[ListingWithImages] = []
+    items: list[ListingWithImages] = []
     total: int
     skip: int
     limit: int

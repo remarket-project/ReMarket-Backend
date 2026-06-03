@@ -1,18 +1,17 @@
-from typing import List
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
+
+from fastapi import APIRouter, HTTPException, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from sqlalchemy.future import select
 
 from app.api.deps import CurrentUser, SessionDep
-from app.models.user import User
+from app.core.websocket_manager import ws_manager
+from app.crud import crud_escrow, crud_notification, crud_offer, crud_wallet
+from app.models.enums import ListingStatus, NotificationType, OfferStatus, OrderStatus
 from app.models.listing import Listing
 from app.models.order import Order
-from app.models.enums import OfferStatus, ListingStatus, OrderStatus, NotificationType
 from app.schemas.offer import OfferCreate, OfferRead, OfferStatusUpdate
-from app.crud import crud_notification, crud_offer, crud_escrow, crud_wallet
 
 router = APIRouter(prefix="/offers", tags=["Offers"])
 limiter = Limiter(key_func=get_remote_address)
@@ -52,7 +51,7 @@ async def create_offer(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/me/sent", response_model=List[OfferRead])
+@router.get("/me/sent", response_model=list[OfferRead])
 async def get_my_sent_offers(
     current_user: CurrentUser,
     db: SessionDep,
@@ -64,7 +63,7 @@ async def get_my_sent_offers(
     return offers
 
 
-@router.get("/me/received", response_model=List[OfferRead])
+@router.get("/me/received", response_model=list[OfferRead])
 async def get_my_received_offers(
     current_user: CurrentUser,
     db: SessionDep,
@@ -76,7 +75,7 @@ async def get_my_received_offers(
     return offers
 
 
-@router.get("/listing/{listing_id}", response_model=List[OfferRead])
+@router.get("/listing/{listing_id}", response_model=list[OfferRead])
 async def get_offers_for_listing(
     current_user: CurrentUser,
     db: SessionDep,
@@ -184,6 +183,7 @@ async def update_offer_status(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    order_id = None
     if status_update.status == OfferStatus.ACCEPTED:
         order = Order(
             buyer_id=offer.buyer_id,
@@ -210,6 +210,7 @@ async def update_offer_status(
                 buyer_wallet_id=buyer_wallet.id,
                 seller_wallet_id=seller_wallet.id,
             )
+        order_id = order.id
 
     await db.commit()
     await db.refresh(updated_offer)
@@ -225,6 +226,12 @@ async def update_offer_status(
                 data={"offer_id": str(rejected_offer.id),
                       "listing_id": str(listing.id)},
             )
+            await ws_manager.send_to_user(rejected_offer.buyer_id, {
+                "type": "offer_rejected",
+                "offer_id": str(rejected_offer.id),
+                "listing_id": str(listing.id),
+                "title": "Yêu cầu mua bị từ chối",
+            })
 
     if status_update.status == OfferStatus.ACCEPTED:
         await crud_notification.create_notification(
@@ -233,15 +240,24 @@ async def update_offer_status(
             type=NotificationType.ORDER_CREATED,
             title="Đơn hàng đã tạo",
             message=f"Yêu cầu mua cho '{listing.title}' đã được chấp nhận. Đơn hàng đã tạo.",
-            data={"listing_id": str(listing.id)},
+            data={"listing_id": str(listing.id), "order_id": str(order_id) if order_id else None},
         )
+        await ws_manager.send_to_user(offer.buyer_id, {
+            "type": "offer_accepted",
+            "offer_id": str(offer.id),
+            "listing_id": str(listing.id),
+            "order_id": str(order_id) if order_id else None,
+            "title": "Đơn hàng đã tạo",
+            "message": f"Yêu cầu mua cho '{listing.title}' đã được chấp nhận. Đơn hàng đã tạo.",
+        })
+
         await crud_notification.create_notification(
             db=db,
             user_id=listing.seller_id,
             type=NotificationType.ORDER_CREATED,
             title="Đơn hàng đã tạo",
             message=f"Bạn đã chấp nhận yêu cầu mua cho '{listing.title}'. Đơn hàng đã tạo.",
-            data={"listing_id": str(listing.id)},
+            data={"listing_id": str(listing.id), "order_id": str(order_id) if order_id else None},
         )
 
     if status_update.status in {OfferStatus.ACCEPTED, OfferStatus.REJECTED, OfferStatus.COUNTERED}:
@@ -258,7 +274,7 @@ async def update_offer_status(
             target_user_id = listing.seller_id
             message = f"Người mua đã trả lời yêu cầu mua ngược lại cho '{listing.title}' với '{status_update.status}'."
 
-        await crud_notification.create_notification(
+        notif = await crud_notification.create_notification(
             db=db,
             user_id=target_user_id,
             type=notification_type,
@@ -266,9 +282,17 @@ async def update_offer_status(
             message=message,
             data={"offer_id": str(offer.id), "listing_id": str(listing.id)},
         )
+        await ws_manager.send_to_user(target_user_id, {
+            "type": str(notification_type.value),
+            "offer_id": str(offer.id),
+            "listing_id": str(listing.id),
+            "notification_id": str(notif.id),
+            "title": "Trạng thái yêu cầu mua được cập nhật",
+            "message": message,
+        })
 
     if previous_status != OfferStatus.EXPIRED and updated_offer.status == OfferStatus.EXPIRED:
-        await crud_notification.create_notification(
+        notif = await crud_notification.create_notification(
             db=db,
             user_id=offer.buyer_id,
             type=NotificationType.OFFER_EXPIRED,
@@ -276,7 +300,17 @@ async def update_offer_status(
             message="Yêu cầu mua của bạn đã hết hạn do quá thời gian.",
             data={"offer_id": str(offer.id), "listing_id": str(listing.id)},
         )
+        await ws_manager.send_to_user(offer.buyer_id, {
+            "type": "offer_expired",
+            "offer_id": str(offer.id),
+            "listing_id": str(listing.id),
+            "notification_id": str(notif.id),
+            "title": "Yêu cầu mua hết hạn",
+            "message": "Yêu cầu mua của bạn đã hết hạn do quá thời gian.",
+        })
 
+    if order_id:
+        updated_offer.order_id = order_id
     return updated_offer
 
 

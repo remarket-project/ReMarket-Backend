@@ -1,20 +1,24 @@
-from app.crud import crud_offer
-from app.db.session import AsyncSessionLocal
-from app.db.init_db import init_db
-from app.core.config import settings
-from app.api.main import api_router
 import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
 import sentry_sdk
-from fastapi import FastAPI, APIRouter
+from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+
+from app.api.main import api_router
+from app.core.config import settings
+from app.crud import crud_offer
+from app.db.init_db import init_db
+from app.db.session import AsyncSessionLocal
+from app.services.escrow_worker import start_worker, stop_worker
 
 # Create services directory on app startup (__init__.py is handled by backend_pre_start.py)
 _services_dir = Path(__file__).parent / "services"
@@ -49,6 +53,7 @@ async def lifespan(app: FastAPI):
     # Startup
     await init_db()
     offer_expiry_task = asyncio.create_task(_offer_expiry_worker())
+    start_worker()  # Escrow auto-release worker
     logger.info("Application started")
 
     yield
@@ -60,6 +65,7 @@ async def lifespan(app: FastAPI):
             await offer_expiry_task
         except asyncio.CancelledError:
             pass
+    stop_worker()  # Escrow auto-release worker
     logger.info("Application shutdown complete")
 
 
@@ -92,8 +98,9 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 
 # Serve uploaded files from local filesystem when not using MinIO
 if not settings.use_minio:
-    from fastapi.staticfiles import StaticFiles
     import os
+
+    from fastapi.staticfiles import StaticFiles
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     app.mount(f"/{settings.UPLOAD_DIR}", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 

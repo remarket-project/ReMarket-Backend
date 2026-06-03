@@ -1,20 +1,18 @@
 import uuid
-from typing import List
-from fastapi import APIRouter, Depends, Query, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from app.api.deps import CurrentUser, SessionDep
-from app.models.user import User
-from app.schemas.notification import NotificationRead
 from app.crud import crud_notification
+from app.schemas.notification import NotificationRead
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
 
 class NotificationsPaginated(BaseModel):
     """Phản hồi thông báo có phân trang"""
-    items: List[NotificationRead]
+    items: list[NotificationRead]
     total: int
     page: int
     page_size: int

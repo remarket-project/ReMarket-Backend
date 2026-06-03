@@ -1,5 +1,24 @@
 """API route modules."""
-from app.api.routes import auth, categories_route, users_route, listings, offers, orders, reviews, admin, admin_audit, chat, saved_follow, notifications, content, websocket, wallet, escrow
+from app.api.routes import (
+    admin,
+    admin_audit,
+    auth,
+    categories_route,
+    chat,
+    content,
+    escrow,
+    listings,
+    notifications,
+    offers,
+    orders,
+    payment,
+    reviews,
+    saved_follow,
+    shipping,
+    users_route,
+    wallet,
+    websocket,
+)
 
 __all__ = [
     "auth",
@@ -18,4 +37,6 @@ __all__ = [
     "websocket",
     "wallet",
     "escrow",
+    "shipping",
+    "payment",
 ]

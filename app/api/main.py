@@ -1,24 +1,26 @@
 from fastapi import APIRouter
 
 from app.api.routes import (
-    auth,
-    categories_route,
-    users_route,
-    listings,
-    offers,
-    orders,
-    reviews,
     admin,
     admin_audit,
+    auth,
+    categories_route,
     chat,
-    saved_follow,
-    notifications,
+    connect,
     content,
-    websocket,
-    wallet,
     escrow,
+    listings,
+    notifications,
+    offers,
+    orders,
+    payment,
+    reviews,
+    saved_follow,
+    shipping,
+    users_route,
+    wallet,
+    websocket,
 )
-from app.core.config import settings
 
 api_router = APIRouter()
 
@@ -57,3 +59,18 @@ api_router.include_router(escrow.router)
 # WebSocket Route
 # ============================================================================
 api_router.include_router(websocket.router)
+
+# ============================================================================
+# Shipping Route (GHN)
+# ============================================================================
+api_router.include_router(shipping.router)
+
+# ============================================================================
+# Payment Route (Stripe)
+# ============================================================================
+api_router.include_router(payment.router)
+
+# ============================================================================
+# Stripe Connect Route
+# ============================================================================
+api_router.include_router(connect.router)

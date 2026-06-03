@@ -2,15 +2,17 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING
+
 from sqlalchemy import DateTime
 from sqlmodel import Field, Relationship, SQLModel
+
 from app.models.enums import ConditionGrade, ListingStatus
 
 if TYPE_CHECKING:
-    from app.models.user import User
     from app.models.category import Category
     from app.models.offer import Offer
     from app.models.order import Order
+    from app.models.user import User
 
 
 def get_datetime_utc() -> datetime:

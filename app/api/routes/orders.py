@@ -1,17 +1,24 @@
 import uuid
 from datetime import datetime
-from typing import List
 
-from fastapi import APIRouter, HTTPException, status, Request
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.api.deps import CurrentUser, SessionDep
-from app.crud import crud_escrow, crud_listing, crud_notification, crud_order, crud_order_event, crud_user, crud_wallet
-from app.models.enums import ListingStatus, OrderStatus, NotificationType
+from app.crud import (
+    crud_escrow,
+    crud_listing,
+    crud_notification,
+    crud_order,
+    crud_order_event,
+    crud_user,
+    crud_wallet,
+)
+from app.models.enums import EscrowStatus, ListingStatus, NotificationType, OrderStatus, PaymentMethod
 from app.schemas.order import OrderDirectCreate, OrderRead, OrderStatusUpdate
-from app.services import send_order_created_email, send_order_completed_email
+from app.services import send_order_completed_email, send_order_created_email
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 limiter = Limiter(key_func=get_remote_address)
@@ -50,6 +57,21 @@ async def create_direct_order(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    # Save shipping address if provided
+    if data.shipping_address:
+        addr = data.shipping_address
+        order.shipping_name = addr.name
+        order.shipping_phone = addr.phone
+        order.shipping_province = addr.province
+        order.shipping_district = addr.district
+        order.shipping_ward = addr.ward
+        order.shipping_address_detail = addr.address_detail
+        order.shipping_note = addr.note
+        order.shipping_province_id = addr.province_id
+        order.shipping_district_id = addr.district_id
+        order.shipping_ward_code = addr.ward_code
+        db.add(order)
+
     # Auto-create escrow for direct order flow.
     existing_escrow = await crud_escrow.get_escrow_by_order_id(db, order.id)
     if not existing_escrow:
@@ -62,6 +84,23 @@ async def create_direct_order(
             buyer_wallet_id=buyer_wallet.id,
             seller_wallet_id=seller_wallet.id,
         )
+
+    # Auto-fund escrow if wallet payment
+    if data.payment_method == PaymentMethod.WALLET:
+        escrow = await crud_escrow.get_escrow_by_order_id(db, order.id)
+        if escrow and escrow.status == EscrowStatus.PENDING.value:
+            buyer_wallet = await crud_wallet.get_or_create_wallet(db, current_user.id)
+            try:
+                await crud_wallet.lock_balance(
+                    db=db,
+                    wallet_id=buyer_wallet.id,
+                    amount=escrow.amount,
+                    order_id=order.id,
+                    description=f"Escrow for order {order.id}",
+                )
+                await crud_escrow.fund_escrow(db, escrow.id)
+            except ValueError:
+                pass  # Insufficient balance: leave escrow unfunded
 
     # Gửi email
     buyer = await crud_user.get_user_by_id(db, current_user.id)
@@ -104,8 +143,8 @@ async def create_direct_order(
     return order
 
 
-@router.get("", response_model=List[OrderRead])
-@router.get("/me", response_model=List[OrderRead])
+@router.get("", response_model=list[OrderRead])
+@router.get("/me", response_model=list[OrderRead])
 async def get_my_orders(
     current_user: CurrentUser,
     db: SessionDep,
@@ -132,7 +171,7 @@ async def get_order(
     return order
 
 
-@router.get("/{order_id}/timeline", response_model=List[OrderEventRead])
+@router.get("/{order_id}/timeline", response_model=list[OrderEventRead])
 async def get_order_timeline(
     current_user: CurrentUser,
     db: SessionDep,

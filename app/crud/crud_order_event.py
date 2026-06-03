@@ -1,8 +1,8 @@
 """CRUD for OrderEvent model."""
 import uuid
-from typing import Optional
-from sqlalchemy.future import select
+
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
 from app.models.order_event import OrderEvent
 
@@ -11,8 +11,8 @@ async def create_order_event(
     db: AsyncSession,
     order_id: uuid.UUID,
     event_type: str,
-    detail: Optional[str] = None,
-    actor_id: Optional[uuid.UUID] = None,
+    detail: str | None = None,
+    actor_id: uuid.UUID | None = None,
 ) -> OrderEvent:
     ev = OrderEvent(order_id=order_id, event_type=event_type,
                     detail=detail, actor_id=actor_id)

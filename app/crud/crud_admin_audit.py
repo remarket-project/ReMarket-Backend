@@ -1,5 +1,4 @@
 """CRUD helpers for admin audit logs."""
-from typing import Optional
 import uuid
 
 from sqlalchemy import func, select
@@ -12,9 +11,9 @@ async def create_admin_audit_log(
     db: AsyncSession,
     admin_id: uuid.UUID,
     action: str,
-    target_type: Optional[str] = None,
-    target_id: Optional[str] = None,
-    note: Optional[str] = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    note: str | None = None,
 ) -> AdminAuditLog:
     log = AdminAuditLog(
         admin_id=admin_id,
@@ -33,8 +32,8 @@ async def get_admin_audit_logs(
     db: AsyncSession,
     skip: int = 0,
     limit: int = 50,
-    action: Optional[str] = None,
-    target_type: Optional[str] = None,
+    action: str | None = None,
+    target_type: str | None = None,
 ) -> tuple[list[AdminAuditLog], int]:
     conditions = []
     if action:

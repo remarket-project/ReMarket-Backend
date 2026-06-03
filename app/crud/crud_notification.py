@@ -4,7 +4,6 @@ CRUD operations for Notification model.
 Handles notification creation, retrieval, and management.
 """
 import uuid
-from typing import Optional
 
 from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,10 +46,10 @@ async def create_notification(
     user_id: uuid.UUID,
     type: NotificationType | str,
     title: str,
-    message: Optional[str] = None,
-    data: Optional[dict] = None,
-    description: Optional[str] = None,
-    related_id: Optional[str] = None,
+    message: str | None = None,
+    data: dict | None = None,
+    description: str | None = None,
+    related_id: str | None = None,
 ) -> Notification:
     """Create a notification for a user.
 
@@ -104,7 +103,7 @@ async def get_unread_count(
 async def get_notification_by_id(
     db: AsyncSession,
     notification_id: uuid.UUID
-) -> Optional[Notification]:
+) -> Notification | None:
     """Get notification by ID."""
     result = await db.execute(
         select(Notification).where(Notification.id == notification_id)
@@ -116,7 +115,7 @@ async def mark_notification_as_read(
     db: AsyncSession,
     notification_id: uuid.UUID,
     user_id: uuid.UUID,
-) -> Optional[Notification]:
+) -> Notification | None:
     """Mark a notification as read."""
     result = await db.execute(
         select(Notification).where(

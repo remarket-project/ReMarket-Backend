@@ -19,7 +19,16 @@ from sqlmodel import Session, select
 
 from app.core.db import engine
 from app.core.security import get_password_hash
-from app.models import Category, ConditionGrade, Listing, ListingImage, ListingStatus, User, UserRole, Wallet
+from app.models import (
+    Category,
+    ConditionGrade,
+    Listing,
+    ListingImage,
+    ListingStatus,
+    User,
+    UserRole,
+    Wallet,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

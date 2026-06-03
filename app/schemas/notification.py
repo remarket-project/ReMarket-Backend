@@ -1,7 +1,9 @@
 import uuid
-from typing import Any, Optional
 from datetime import datetime
+from typing import Any
+
 from pydantic import BaseModel, Field
+
 from app.models.enums import NotificationType
 
 
@@ -10,7 +12,7 @@ class NotificationCreate(BaseModel):
     type: NotificationType
     title: str = Field(..., max_length=255)
     message: str
-    data: Optional[dict[str, Any]] = None
+    data: dict[str, Any] | None = None
 
 
 class NotificationRead(NotificationCreate):

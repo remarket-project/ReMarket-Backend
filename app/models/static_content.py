@@ -1,7 +1,6 @@
 """Static content pages model for help/legal/contact."""
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
 from sqlmodel import Field, SQLModel
 

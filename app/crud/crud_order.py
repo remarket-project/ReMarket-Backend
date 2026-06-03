@@ -5,18 +5,17 @@ Handles order creation, retrieval, and status updates.
 """
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
 from sqlalchemy import or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+from app.crud.crud_order_event import create_order_event
 from app.models.enums import ListingStatus, OfferStatus, OrderStatus
 from app.models.listing import Listing
 from app.models.offer import Offer
 from app.models.order import Order
 from app.models.user import User
-from app.crud.crud_order_event import create_order_event
 
 
 def utc_now() -> datetime:
@@ -24,7 +23,7 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-async def get_order_by_id(db: AsyncSession, order_id: uuid.UUID) -> Optional[Order]:
+async def get_order_by_id(db: AsyncSession, order_id: uuid.UUID) -> Order | None:
     """Get order by ID."""
     result = await db.execute(select(Order).where(Order.id == order_id))
     return result.scalar_one_or_none()
@@ -58,6 +57,17 @@ async def get_user_orders(
     items = list(result.scalars().all())
 
     return items, total
+
+
+async def get_order_by_tracking(
+    db: AsyncSession,
+    tracking_number: str,
+) -> Order | None:
+    """Get order by GHN tracking number."""
+    result = await db.execute(
+        select(Order).where(Order.tracking_number == tracking_number)
+    )
+    return result.scalar_one_or_none()
 
 
 async def create_direct_order(
@@ -98,6 +108,7 @@ async def create_direct_order(
         status=OrderStatus.PENDING,
     )
     db.add(order)
+    await db.flush()  # Get order.id before commit
     locked_listing.status = ListingStatus.SOLD
 
     # Reject all pending offers on this listing
@@ -160,7 +171,7 @@ async def update_order_status(
     db: AsyncSession,
     order_id: uuid.UUID,
     new_status: OrderStatus
-) -> Optional[Order]:
+) -> Order | None:
     """Update order status."""
     order = await get_order_by_id(db, order_id)
     if not order:

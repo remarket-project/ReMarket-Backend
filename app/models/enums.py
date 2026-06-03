@@ -39,6 +39,12 @@ class OfferStatus(str, Enum):
     EXPIRED = "expired"        # Hết hạn
 
 
+class PaymentMethod(str, Enum):
+    """Phương thức thanh toán."""
+    WALLET = "wallet"  # Thanh toán từ ví (escrow)
+    COD = "cod"        # Thanh toán khi nhận hàng
+
+
 class OrderStatus(str, Enum):
     """Status of an order."""
     PENDING = "pending"        # Vừa tạo, chờ xác nhận
@@ -74,7 +80,11 @@ class NotificationType(str, Enum):
 class TransactionType(str, Enum):
     """Type of wallet transaction."""
     DEPOSIT = "deposit"                    # Nạp tiền
+    DEPOSIT_PENDING = "deposit_pending"    # Đang chờ xử lý nạp
     WITHDRAW = "withdraw"                  # Rút tiền
+    WITHDRAW_PENDING = "withdraw_pending"  # Đang chờ xử lý rút
+    WITHDRAW_COMPLETED = "withdraw_completed"  # Rút thành công
+    WITHDRAW_FAILED = "withdraw_failed"    # Rút thất bại
     ESCROW_LOCK = "escrow_lock"           # Khóa tiền vào escrow
     ESCROW_RELEASE = "escrow_release"     # Giải phóng từ escrow
     ESCROW_REFUND = "escrow_refund"       # Hoàn tiền từ escrow

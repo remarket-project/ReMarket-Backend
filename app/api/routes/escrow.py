@@ -4,17 +4,20 @@ Escrow API endpoints.
 Handles escrow accounts, funding, releases, and disputes.
 """
 import uuid
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 
-from app.api.deps import CurrentUser, SessionDep, CurrentAdmin
-from app.crud import crud_escrow, crud_wallet, crud_order
-from app.models.enums import EscrowStatus, TransactionType, UserRole, OrderStatus
-from app.schemas.escrow import EscrowRead, OpenDisputeRequest
+from app.api.deps import CurrentAdmin, CurrentUser, SessionDep
 from app.core.websocket_manager import ws_manager
+from app.crud import crud_escrow, crud_order, crud_wallet
 from app.crud.crud_notification import create_notification
-from app.models.enums import NotificationType
+from app.models.enums import (
+    EscrowStatus,
+    NotificationType,
+    OrderStatus,
+    UserRole,
+)
+from app.schemas.escrow import EscrowRead, OpenDisputeRequest
 
 router = APIRouter(prefix="/escrows", tags=["Escrow"])
 
@@ -301,7 +304,7 @@ async def request_release(
         user_id=order.seller_id,
         type=NotificationType.ORDER_DELIVERED.value,
         title="Yêu cầu thanh toán",
-        description=f"Buyer xác nhận đã nhận hàng, yêu cầu giải phóng escrow",
+        description="Buyer xác nhận đã nhận hàng, yêu cầu giải phóng escrow",
         related_id=str(order_id)
     )
     await ws_manager.send_to_user(
@@ -398,7 +401,7 @@ async def confirm_release(
         user_id=order.buyer_id,
         type=NotificationType.ORDER_COMPLETED.value,
         title="Đơn hàng hoàn thành",
-        description=f"Thanh toán đã được giải phóng. Đơn hàng hoàn thành.",
+        description="Thanh toán đã được giải phóng. Đơn hàng hoàn thành.",
         related_id=str(order_id)
     )
     await ws_manager.send_to_user(
@@ -420,7 +423,7 @@ async def confirm_release(
         user_id=order.seller_id,
         type=NotificationType.ORDER_COMPLETED.value,
         title="Thanh toán nhận được",
-        description=f"Thanh toán escrow đã được giải phóng vào ví của bạn",
+        description="Thanh toán escrow đã được giải phóng vào ví của bạn",
         related_id=str(order_id)
     )
     await ws_manager.send_to_user(

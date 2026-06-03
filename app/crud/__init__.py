@@ -1,6 +1,7 @@
 # CRUD operations package
 from app.crud import (
     crud_category,
+    crud_escrow,
     crud_listing,
     crud_notification,
     crud_offer,
@@ -8,7 +9,6 @@ from app.crud import (
     crud_review,
     crud_user,
     crud_wallet,
-    crud_escrow,
 )
 
 __all__ = [

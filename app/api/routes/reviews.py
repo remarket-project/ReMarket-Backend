@@ -1,12 +1,10 @@
 import uuid
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+
+from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import CurrentUser, SessionDep
 from app.crud import crud_notification, crud_order, crud_review, crud_user
-from app.models.enums import OrderStatus, NotificationType
-from app.models.user import User
+from app.models.enums import NotificationType, OrderStatus
 from app.schemas.review import ReviewCreate, ReviewRead
 
 router = APIRouter(prefix="/reviews", tags=["Reviews"])
@@ -61,14 +59,14 @@ async def create_review(
     return review
 
 
-@router.get("/user/{user_id}", response_model=List[ReviewRead])
+@router.get("/user/{user_id}", response_model=list[ReviewRead])
 async def get_user_reviews(user_id: uuid.UUID, db: SessionDep):
     """Lấy tất cả đánh giá của một người dùng"""
     items, total = await crud_review.get_user_reviews(db, user_id)
     return items
 
 
-@router.get("/{order_id}", response_model=List[ReviewRead])
+@router.get("/{order_id}", response_model=list[ReviewRead])
 async def get_review(order_id: uuid.UUID, db: SessionDep):
     """Lấy tất cả đánh giá cho một đơn hàng"""
     reviews = await crud_review.get_reviews_by_order(db, order_id)

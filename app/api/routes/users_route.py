@@ -6,23 +6,23 @@ Handles user profile management and public user info access.
 import uuid
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import case, func, select
 
-from app.api.deps import CurrentUser, SessionDep, CurrentAdmin
+from app.api.deps import CurrentAdmin, CurrentUser, SessionDep
 from app.core.security import (
-    verify_password,
     get_password_hash,
+    verify_password,
 )
 from app.crud import crud_listing, crud_user
-from app.models import User, UserUpdate, UserPrivate, UserPublic, UsersPublic
+from app.models import UserPrivate, UserPublic, UsersPublic
 from app.models.enums import ListingStatus
 from app.models.listing import Listing
 from app.models.review import Review
+from app.schemas.auth import ChangePasswordRequest, MessageResponse
 from app.schemas.listing import ListingWithImages
 from app.schemas.user import UserUpdate as UserUpdateSchema
-from app.schemas.auth import ChangePasswordRequest, MessageResponse
 
 router = APIRouter(prefix="/users", tags=["users"])
 

@@ -1,6 +1,5 @@
 """CRUD for chat models (basic)."""
 import uuid
-from typing import Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +9,7 @@ from app.models.chat import ChatConversation, ConversationParticipant, Message
 
 async def create_conversation(
     db: AsyncSession,
-    listing_id: Optional[uuid.UUID] = None,
+    listing_id: uuid.UUID | None = None,
 ) -> ChatConversation:
     conversation = ChatConversation(listing_id=listing_id)
     db.add(conversation)

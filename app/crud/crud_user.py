@@ -4,22 +4,21 @@ CRUD operations for User model.
 Pure database operations (no business logic).
 """
 import uuid
-from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.models import User, UserCreate, UserRegister, UserUpdate
 from app.core.security import get_password_hash, hash_token
+from app.models import User, UserCreate, UserRegister, UserUpdate
 
 
-async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
+async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
     """Get user by email. Returns None if not found."""
     result = await db.execute(select(User).where(User.email == email))
     return result.scalar_one_or_none()
 
 
-async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> Optional[User]:
+async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
     """Get user by ID. Returns None if not found."""
     result = await db.execute(select(User).where(User.id == user_id))
     return result.scalar_one_or_none()
@@ -28,7 +27,7 @@ async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> Optional[User]
 async def get_user_by_refresh_token(
     db: AsyncSession,
     hashed_token: str
-) -> Optional[User]:
+) -> User | None:
     """Find user by their hashed refresh token."""
     result = await db.execute(
         select(User).where(User.hashed_refresh_token == hashed_token)
@@ -65,7 +64,7 @@ async def update_user(
     db: AsyncSession,
     user_id: uuid.UUID,
     user_in: UserUpdate
-) -> Optional[User]:
+) -> User | None:
     """
     Update existing user.
 
@@ -96,7 +95,7 @@ async def update_user(
 async def update_user_refresh_token(
     db: AsyncSession,
     user_id: uuid.UUID,
-    refresh_token: Optional[str]
+    refresh_token: str | None
 ) -> None:
     """
     Update user's refresh token (hashed).
@@ -120,7 +119,7 @@ async def update_user_password(
     db: AsyncSession,
     user_id: uuid.UUID,
     new_password_hash: str
-) -> Optional[User]:
+) -> User | None:
     """
     Update user's password.
 
@@ -148,7 +147,7 @@ async def update_user_password(
 async def mark_user_email_verified(
     db: AsyncSession,
     email: str
-) -> Optional[User]:
+) -> User | None:
     """Mark user email as verified."""
     user = await get_user_by_email(db, email)
     if not user:
@@ -177,7 +176,7 @@ async def update_user_status(
     db: AsyncSession,
     user_id: uuid.UUID,
     is_active: bool
-) -> Optional[User]:
+) -> User | None:
     """Update user active status."""
     user = await get_user_by_id(db, user_id)
     if not user:
@@ -197,7 +196,7 @@ async def get_users_count(db: AsyncSession) -> int:
     return result.scalar_one()
 
 
-async def update_user_ratings(db: AsyncSession, user_id: uuid.UUID) -> Optional[User]:
+async def update_user_ratings(db: AsyncSession, user_id: uuid.UUID) -> User | None:
     """
     Update user ratings based on reviews received.
     Recalculates rating_avg, rating_count, and trust_score.
@@ -210,6 +209,7 @@ async def update_user_ratings(db: AsyncSession, user_id: uuid.UUID) -> Optional[
         Updated User object or None if user not found
     """
     from sqlalchemy import func
+
     from app.models import Review
 
     user = await get_user_by_id(db, user_id)

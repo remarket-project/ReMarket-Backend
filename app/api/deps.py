@@ -1,9 +1,9 @@
 """
 API dependencies - shared dependencies for all routes.
 """
+import uuid
 from collections.abc import AsyncGenerator
 from typing import Annotated, TypeAlias
-import uuid
 
 import jwt
 from fastapi import Depends, HTTPException, status

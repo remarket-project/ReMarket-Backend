@@ -4,22 +4,21 @@ CRUD operations for Wallet and WalletTransaction.
 Handles wallet balance management and transaction history.
 """
 import uuid
-from decimal import Decimal
-from typing import Optional
 from datetime import datetime, timezone
+from decimal import Decimal
 
+from sqlalchemy import desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func, desc
 
-from app.models.wallet import Wallet, WalletTransaction
 from app.models.enums import TransactionType
+from app.models.wallet import Wallet, WalletTransaction
 
 
 async def get_wallet_by_user_id(
     db: AsyncSession,
     user_id: uuid.UUID
-) -> Optional[Wallet]:
+) -> Wallet | None:
     """Get wallet by user ID."""
     result = await db.execute(
         select(Wallet).where(Wallet.user_id == user_id)
@@ -57,9 +56,9 @@ async def add_balance(
     wallet_id: uuid.UUID,
     amount: Decimal,
     transaction_type: TransactionType,
-    description: Optional[str] = None,
-    order_id: Optional[uuid.UUID] = None,
-    escrow_id: Optional[uuid.UUID] = None
+    description: str | None = None,
+    order_id: uuid.UUID | None = None,
+    escrow_id: uuid.UUID | None = None
 ) -> tuple[Wallet, WalletTransaction]:
     """
     Add to wallet balance and create transaction record.
@@ -125,7 +124,7 @@ async def lock_balance(
     wallet_id: uuid.UUID,
     amount: Decimal,
     order_id: uuid.UUID,
-    description: Optional[str] = None
+    description: str | None = None
 ) -> tuple[Wallet, WalletTransaction]:
     """
     Lock balance for escrow.
@@ -195,7 +194,7 @@ async def unlock_balance(
     wallet_id: uuid.UUID,
     amount: Decimal,
     order_id: uuid.UUID,
-    description: Optional[str] = None
+    description: str | None = None
 ) -> tuple[Wallet, WalletTransaction]:
     """
     Unlock balance from escrow (refund to available balance).
@@ -261,7 +260,8 @@ async def transfer_locked_to_user(
     to_wallet_id: uuid.UUID,
     amount: Decimal,
     order_id: uuid.UUID,
-    description: Optional[str] = None
+    description: str | None = None,
+    stripe_transfer_id: str | None = None,
 ) -> tuple[Wallet, Wallet, WalletTransaction, WalletTransaction]:
     """
     Transfer locked funds from buyer to seller (escrow release).
@@ -324,12 +324,13 @@ async def transfer_locked_to_user(
 
     to_tx = WalletTransaction(
         wallet_id=to_wallet_id,
-        amount=amount,  # Positive
+        amount=amount,
         type=TransactionType.ESCROW_RELEASE.value,
         description=description or f"Payment received for order {order_id}",
         order_id=order_id,
         balance_before=to_balance_before,
-        balance_after=to_wallet.balance
+        balance_after=to_wallet.balance,
+        stripe_transfer_id=stripe_transfer_id,
     )
 
     db.add(from_wallet)

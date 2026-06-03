@@ -1,28 +1,28 @@
-import uuid
 import os
-from typing import Literal, Optional
+import uuid
+from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Request, status
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.future import select
+from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile, status
+from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.future import select
 
 from app.api.deps import CurrentUser, SessionDep
 from app.core.config import settings
-from app.models.user import User, UserRole
-from app.models.offer import Offer
+from app.crud import crud_category, crud_listing
 from app.models.enums import ListingStatus, OfferStatus
+from app.models.offer import Offer
+from app.models.user import UserRole
 from app.schemas.listing import (
-    ListingRead,
     ListingCreate,
+    ListingImageRead,
+    ListingPaginated,
+    ListingRead,
     ListingUpdate,
     ListingWithImages,
-    ListingPaginated,
-    ListingImageRead
 )
-from app.crud import crud_listing, crud_category
 from app.services.minio_service import get_minio_service
 
 router = APIRouter(prefix="/listings", tags=["Listings"])
@@ -64,11 +64,11 @@ async def _fetch_listing_with_images(db: SessionDep, listing_id: uuid.UUID) -> L
 @router.get("/", response_model=ListingPaginated)
 async def list_listings(
     db: SessionDep,
-    keyword: Optional[str] = None,
-    category_id: Optional[uuid.UUID] = None,
-    seller_id: Optional[uuid.UUID] = None,
-    min_price: Optional[float] = Query(None, ge=0),
-    max_price: Optional[float] = Query(None, ge=0),
+    keyword: str | None = None,
+    category_id: uuid.UUID | None = None,
+    seller_id: uuid.UUID | None = None,
+    min_price: float | None = Query(None, ge=0),
+    max_price: float | None = Query(None, ge=0),
     sort_by: Literal["newest", "oldest", "price_asc",
                      "price_desc", "popular", "featured"] = "newest",
     skip: int = Query(0, ge=0),
@@ -161,7 +161,7 @@ async def get_search_suggestions(
 @router.get("/price-bands", response_model=list[PriceBandRead])
 async def get_price_band_summary(
     db: SessionDep,
-    category_id: Optional[uuid.UUID] = None,
+    category_id: uuid.UUID | None = None,
 ):
     summary = await crud_listing.get_price_band_summary(db, category_id=str(category_id) if category_id else None)
     return [PriceBandRead.model_validate(item) for item in summary]
@@ -171,8 +171,8 @@ async def get_price_band_summary(
 async def get_my_listings(
     current_user: CurrentUser,
     db: SessionDep,
-    keyword: Optional[str] = None,
-    status: Optional[ListingStatus] = None,
+    keyword: str | None = None,
+    status: ListingStatus | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100)
 ):

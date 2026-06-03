@@ -4,9 +4,8 @@ CRUD operations for Review model.
 Handles review creation and retrieval, including user trust score calculations.
 """
 import uuid
-from decimal import Decimal
 from datetime import datetime, timezone
-from typing import Optional
+from decimal import Decimal
 
 from sqlalchemy import and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,7 +36,7 @@ def calculate_trust_score(user: User) -> Decimal:
 async def get_review_by_order(
     db: AsyncSession,
     order_id: uuid.UUID
-) -> Optional[Review]:
+) -> Review | None:
     """Get first review for an order."""
     result = await db.execute(
         select(Review).where(Review.order_id == order_id)
@@ -62,7 +61,7 @@ async def get_review_by_order_and_reviewer(
     db: AsyncSession,
     order_id: uuid.UUID,
     reviewer_id: uuid.UUID
-) -> Optional[Review]:
+) -> Review | None:
     """Check if user has already reviewed this order."""
     result = await db.execute(
         select(Review).where(
@@ -81,7 +80,7 @@ async def create_review(
     reviewer_id: uuid.UUID,
     reviewee_id: uuid.UUID,
     rating: int,
-    comment: Optional[str] = None
+    comment: str | None = None
 ) -> Review:
     """Create a review and update user statistics."""
     review = Review(

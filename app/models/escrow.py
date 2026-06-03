@@ -8,13 +8,11 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Column, String, DateTime
+from sqlalchemy import Column, DateTime, String
 from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
     from app.models.order import Order
-    from app.models.wallet import Wallet
-    from app.models.user import User
 
 
 def get_datetime_utc() -> datetime:
@@ -59,34 +57,48 @@ class Escrow(SQLModel, table=True):
     )
 
     # Dispute information
-    dispute_reason: Optional[str] = Field(default=None, max_length=500)
-    dispute_opened_at: Optional[datetime] = Field(
+    dispute_reason: str | None = Field(default=None, max_length=500)
+    dispute_opened_at: datetime | None = Field(
         default=None,
         sa_type=DateTime(timezone=True)
     )
-    admin_resolved_by: Optional[uuid.UUID] = Field(
+    admin_resolved_by: uuid.UUID | None = Field(
         default=None,
         foreign_key="users.id",
         ondelete="SET NULL"
     )
     # Resolution / admin notes
-    admin_notes: Optional[str] = Field(default=None, max_length=1000)
-    resolution_reason: Optional[str] = Field(default=None, max_length=500)
-    resolved_at: Optional[datetime] = Field(
+    admin_notes: str | None = Field(default=None, max_length=1000)
+    resolution_reason: str | None = Field(default=None, max_length=500)
+    resolved_at: datetime | None = Field(
         default=None, sa_type=DateTime(timezone=True))
-    dispute_status: Optional[str] = Field(
+    dispute_status: str | None = Field(
         default=None, sa_column=Column(String(50)))
 
+    # Auto-release fields (MỚI)
+    delivered_at: datetime | None = Field(
+        default=None, sa_type=DateTime(timezone=True),
+        description="Thời gian GHN xác nhận giao hàng",
+    )
+    auto_release_at: datetime | None = Field(
+        default=None, sa_type=DateTime(timezone=True),
+        description="Thời điểm tự động giải ngân (delivered_at + dispute period)",
+    )
+    release_trigger: str | None = Field(
+        default=None, sa_column=Column(String(20)),
+        description="Cách release: auto | manual_buyer | manual_admin",
+    )
+
     # Timestamps
-    funded_at: Optional[datetime] = Field(
+    funded_at: datetime | None = Field(
         default=None,
         sa_type=DateTime(timezone=True)
     )
-    release_requested_at: Optional[datetime] = Field(
+    release_requested_at: datetime | None = Field(
         default=None,
         sa_type=DateTime(timezone=True)
     )
-    released_at: Optional[datetime] = Field(
+    released_at: datetime | None = Field(
         default=None,
         sa_type=DateTime(timezone=True)
     )

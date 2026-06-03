@@ -5,7 +5,7 @@ Handles user reviews and ratings for completed orders.
 """
 import uuid
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from sqlmodel import Field, Relationship, SQLModel, UniqueConstraint
 
@@ -29,7 +29,7 @@ class Review(SQLModel, table=True):
     reviewer_id: uuid.UUID = Field(foreign_key="users.id")
     reviewee_id: uuid.UUID = Field(foreign_key="users.id")
     rating: int = Field(ge=1, le=5)
-    comment: Optional[str] = None
+    comment: str | None = None
 
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))

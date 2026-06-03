@@ -5,7 +5,6 @@ Handles listing creation, retrieval, updates, and searches with image handling.
 """
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
 from sqlalchemy import delete, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,7 +23,7 @@ def _to_uuid(value: str | uuid.UUID) -> uuid.UUID:
 async def create_listing(
     db: AsyncSession,
     title: str,
-    description: Optional[str],
+    description: str | None,
     price,
     is_negotiable: bool,
     condition_grade,
@@ -48,7 +47,7 @@ async def create_listing(
     return db_obj
 
 
-async def get_listing(db: AsyncSession, listing_id: str) -> Optional[Listing]:
+async def get_listing(db: AsyncSession, listing_id: str) -> Listing | None:
     """Get listing by ID."""
     result = await db.execute(
         select(Listing).options(joinedload(Listing.seller)).where(Listing.id == _to_uuid(listing_id))
@@ -125,14 +124,14 @@ async def add_listing_image(
 async def update_listing(
     db: AsyncSession,
     listing_id: str,
-    title: Optional[str] = None,
-    description: Optional[str] = None,
+    title: str | None = None,
+    description: str | None = None,
     price=None,
-    is_negotiable: Optional[bool] = None,
+    is_negotiable: bool | None = None,
     condition_grade=None,
-    category_id: Optional[str] = None,
-    status: Optional[ListingStatus] = None,
-) -> Optional[Listing]:
+    category_id: str | None = None,
+    status: ListingStatus | None = None,
+) -> Listing | None:
     """Update a listing (partial update)."""
     update_data = {}
     if title is not None:
@@ -168,7 +167,7 @@ async def update_listing_status(
     db: AsyncSession,
     listing_id: str,
     status: ListingStatus
-) -> Optional[Listing]:
+) -> Listing | None:
     """Update listing status."""
     await db.execute(
         update(Listing)
@@ -202,12 +201,12 @@ async def hard_delete_listing(db: AsyncSession, listing_id: str) -> None:
 
 async def search_listings(
     db: AsyncSession,
-    keyword: Optional[str] = None,
-    category_id: Optional[str] = None,
-    seller_id: Optional[str] = None,
-    min_price: Optional[float] = None,
-    max_price: Optional[float] = None,
-    status: Optional[ListingStatus] = ListingStatus.ACTIVE,
+    keyword: str | None = None,
+    category_id: str | None = None,
+    seller_id: str | None = None,
+    min_price: float | None = None,
+    max_price: float | None = None,
+    status: ListingStatus | None = ListingStatus.ACTIVE,
     sort_by: str = "newest",
     featured_only: bool = False,
     skip: int = 0,
@@ -335,7 +334,7 @@ async def get_listing_suggestions(
 
 async def get_price_band_summary(
     db: AsyncSession,
-    category_id: Optional[str] = None,
+    category_id: str | None = None,
 ) -> list[dict[str, object]]:
     bands = [
         {"label": "Dưới 1 triệu", "min_price": 0, "max_price": 1_000_000},
@@ -371,7 +370,7 @@ async def get_price_band_summary(
 async def get_listing_image(
     db: AsyncSession,
     image_id: str
-) -> Optional[ListingImage]:
+) -> ListingImage | None:
     """Get image by ID."""
     result = await db.execute(
         select(ListingImage).where(ListingImage.id == _to_uuid(image_id))

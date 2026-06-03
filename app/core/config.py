@@ -1,5 +1,6 @@
 import secrets
 import warnings
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -7,13 +8,11 @@ from pydantic import (
     EmailStr,
     Field,
     HttpUrl,
-    PostgresDsn,
     computed_field,
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing_extensions import Self
-from pathlib import Path
 
 
 def parse_cors(v: Any) -> list[str]:
@@ -103,8 +102,33 @@ class Settings(BaseSettings):
     # Redis (optional - for real-time multi-instance)
     REDIS_URL: str | None = None
 
-    # Frontend
+    # Frontend / Backend URLs
     FRONTEND_HOST: str = "http://localhost:5173"
+    BACKEND_HOST: str = "http://localhost:8000"
+
+    # Shipping (GHN)
+    SHIPPING_PROVIDER: str = "ghn"
+    GHN_API_URL: str = "https://dev-online-gateway.ghn.vn/shiip/public-api"
+    GHN_TOKEN: str = ""
+    GHN_SHOP_ID: int = 0
+    GHN_FROM_PROVINCE_ID: int = 200  # Mặc định Hồ Chí Minh (theo GHN)
+    GHN_FROM_DISTRICT_ID: int = 1440  # Quận 1 (theo GHN district_id)
+    GHN_FROM_WARD_CODE: str = ""
+
+    # Payment (Stripe Test Mode)
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_PUBLISHABLE_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_CURRENCY: str = "usd"
+    VND_USD_EXCHANGE_RATE: int = 25000
+
+    # Escrow auto-release
+    ESCROW_DISPUTE_PERIOD_DAYS: int = 3
+    ESCROW_AUTO_RELEASE_INTERVAL_SECONDS: int = 60
+
+    # Withdraw limits
+    WITHDRAW_MIN_AMOUNT: int = 50000
+    WITHDRAW_MAX_AMOUNT: int = 50000000
 
     # Offers
     OFFER_EXPIRE_HOURS: int = 48

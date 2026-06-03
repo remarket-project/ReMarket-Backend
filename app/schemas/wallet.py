@@ -4,8 +4,8 @@ Wallet schemas for request/response validation.
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from pydantic import BaseModel, Field
 
+from pydantic import BaseModel, Field
 
 # ============================================================================
 # Request Schemas
@@ -47,6 +47,10 @@ class TransactionRead(BaseModel):
     description: str | None
     order_id: uuid.UUID | None
     escrow_id: uuid.UUID | None
+    payment_gateway_ref: str | None = None
+    bank_code: str | None = None
+    bank_account: str | None = None
+    status: str = "completed"
     balance_before: Decimal
     balance_after: Decimal
     created_at: datetime

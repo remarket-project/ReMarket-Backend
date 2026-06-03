@@ -1,5 +1,5 @@
-from typing import Optional
 import re
+
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.models import UserPrivate
@@ -54,7 +54,7 @@ class RegisterRequest(BaseModel):
     password: str = Field(
         min_length=12, description="Mật khẩu: 12+ ký tự, 1 in hoa, 1 thường, 1 số, 1 ký tự đặc biệt")
     full_name: str = Field(min_length=2, max_length=255)
-    phone: Optional[str] = None
+    phone: str | None = None
 
     @field_validator('password')
     @classmethod

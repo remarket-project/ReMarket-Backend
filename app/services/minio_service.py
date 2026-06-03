@@ -2,7 +2,7 @@
 
 import io
 from datetime import timedelta
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from minio import Minio
@@ -39,7 +39,7 @@ class MinIOService:
         try:
             if not self.client.bucket_exists(self.bucket_name):
                 self.client.make_bucket(self.bucket_name)
-            
+
             # Set bucket policy to public read
             policy = {
                 "Version": "2012-10-17",
@@ -109,7 +109,7 @@ class MinIOService:
             return False
 
     def get_presigned_url(
-        self, file_path: str, expires: Optional[timedelta] = None
+        self, file_path: str, expires: timedelta | None = None
     ) -> str:
         """Get presigned URL or public URL for file"""
         if settings.MINIO_PUBLIC_ENDPOINT:
@@ -132,7 +132,7 @@ class MinIOService:
 
 
 # Singleton instance
-_minio_service: Optional[MinIOService] = None
+_minio_service: MinIOService | None = None
 
 
 def get_minio_service() -> MinIOService:

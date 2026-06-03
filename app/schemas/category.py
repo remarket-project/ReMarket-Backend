@@ -3,7 +3,6 @@ Category schemas for API endpoints.
 
 Handles category request/responses.
 """
-from sqlmodel import SQLModel
 
 from app.models import (
     CategoriesPublic,
@@ -11,7 +10,6 @@ from app.models import (
     CategoryPublic,
     CategoryUpdate,
 )
-
 
 # Re-export commonly used schemas
 __all__ = [

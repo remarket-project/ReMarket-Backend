@@ -1,21 +1,38 @@
+import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from decimal import Decimal
+
+from fastapi import APIRouter, Body, HTTPException, status
 from sqlalchemy import func, select
 
-from app.api.deps import CurrentUser, SessionDep, CurrentAdmin
-from app.crud import crud_admin_audit, crud_notification, crud_listing, crud_escrow, crud_wallet, crud_order
+logger = logging.getLogger(__name__)
+
+from app.api.deps import CurrentAdmin, SessionDep
+from app.crud import (
+    crud_admin_audit,
+    crud_escrow,
+    crud_notification,
+    crud_order,
+    crud_wallet,
+)
 from app.crud.crud_listing import get_listing, get_pending_listings
 from app.crud.crud_user import get_user_by_id, get_users_list, update_user_status
-from app.models.enums import EscrowStatus, ListingStatus, NotificationType, OrderStatus, UserRole
+from app.models.enums import (
+    EscrowStatus,
+    ListingStatus,
+    NotificationType,
+    OrderStatus,
+)
+from app.models.escrow import Escrow
 from app.models.listing import Listing
 from app.models.order import Order
-from app.models.escrow import Escrow
 from app.models.user import User
+from app.models.wallet import WalletTransaction
 from app.schemas.escrow import ResolveEscrowRequest
 from app.schemas.listing import ListingRead
 from app.schemas.user import UserMe, UserStatusUpdate
+from app.services import stripe_connect, stripe_service
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -26,7 +43,7 @@ async def _log_admin_action(
     action: str,
     target_type: str,
     target_id: str,
-    note: Optional[str] = None,
+    note: str | None = None,
 ) -> None:
     await crud_admin_audit.create_admin_audit_log(
         db=db,
@@ -51,7 +68,7 @@ async def get_dashboard_stats(
         await db.execute(
             select(func.count())
             .select_from(Escrow)
-            .where(Escrow.status == EscrowStatus.DISPUTED.value)  # type: ignore
+            .where(Escrow.status == EscrowStatus.DISPUTED.value)
         )
     ).scalar_one()
 
@@ -91,8 +108,7 @@ async def update_user_account_status(
 
     user = await get_user_by_id(db, user_id)
     if not user:
-        raise HTTPException(
-            status_code=404, detail="Người dùng không tìm thấy")
+        raise HTTPException(status_code=404, detail="Người dùng không tìm thấy")
 
     updated_user = await update_user_status(db, user_id, status_data.is_active)
     await _log_admin_action(
@@ -134,15 +150,6 @@ async def approve_listing(
             detail=f"Chỉ có thể duyệt bài đăng PENDING. Trạng thái hiện tại: {listing.status}"
         )
 
-    # Cho phép duyệt tin đăng không có ảnh để hỗ trợ phát triển và test dễ dàng hơn
-    # (Giao diện người dùng đã tích hợp cơ chế hiển thị ảnh fallback thông minh)
-    # images = await crud_listing.get_listing_images(db, str(listing_id))
-    # if not images:
-    #     raise HTTPException(
-    #         status_code=400,
-    #         detail="Không thể duyệt bài đăng không có ảnh"
-    #     )
-
     listing.status = ListingStatus.ACTIVE
     listing.rejection_reason = None
     listing.updated_at = datetime.now(timezone.utc)
@@ -171,7 +178,7 @@ async def reject_listing_route(
     listing_id: uuid.UUID,
     admin_user: CurrentAdmin,
     db: SessionDep,
-    reason: Optional[str] = Body(None, embed=True, max_length=500)
+    reason: str | None = Body(None, embed=True, max_length=500)
 ):
     """Admin: Từ chối bài đăng"""
     listing = await get_listing(db, str(listing_id))
@@ -220,7 +227,12 @@ async def resolve_escrow_dispute(
     admin_user: CurrentAdmin,
     db: SessionDep,
 ):
-    """Admin: resolve disputed escrow by releasing to seller or refunding buyer."""
+    """Admin: resolve disputed escrow by releasing to seller or refunding buyer.
+
+    If releasing to seller and seller has a Stripe account, a Stripe Transfer
+    is also created. If refunding and escrow was already released, a Stripe
+    Transfer reversal is attempted.
+    """
     order = await crud_order.get_order_by_id(db, order_id)
     if not order:
         raise HTTPException(status_code=404, detail="Đơn hàng không tìm thấy")
@@ -238,6 +250,18 @@ async def resolve_escrow_dispute(
             order_id=order_id,
             description=f"Admin release escrow for order {order_id}",
         )
+
+        seller = await get_user_by_id(db, order.seller_id)
+        if seller and seller.stripe_account_id and seller.stripe_onboarding_complete:
+            try:
+                await stripe_connect.transfer_to_connected_account(
+                    amount_vnd=escrow.amount,
+                    destination_account_id=seller.stripe_account_id,
+                    order_id=str(order_id),
+                    description=f"Escrow release for order {order_id}",
+                )
+            except Exception as e:
+                logger.warning("Stripe transfer failed for order %s: %s", order_id, e)
     else:
         await crud_wallet.unlock_balance(
             db=db,
@@ -246,6 +270,24 @@ async def resolve_escrow_dispute(
             order_id=order_id,
             description=f"Admin refund escrow for order {order_id}",
         )
+
+        seller_tx = await db.execute(
+            select(WalletTransaction)
+            .where(
+                WalletTransaction.order_id == order_id,
+                WalletTransaction.stripe_transfer_id.isnot(None),
+            )
+            .order_by(WalletTransaction.created_at.desc())
+        )
+        seller_tx_row = seller_tx.scalar_one_or_none()
+        if seller_tx_row and seller_tx_row.stripe_transfer_id:
+            try:
+                await stripe_connect.reverse_transfer(
+                    transfer_id=seller_tx_row.stripe_transfer_id,
+                    amount_vnd=escrow.amount,
+                )
+            except Exception as e:
+                logger.warning("Stripe transfer reversal failed: %s", e)
 
     updated_escrow = await crud_escrow.resolve_dispute(
         db=db,
@@ -273,8 +315,7 @@ async def resolve_escrow_dispute(
         type=NotificationType.ORDER_CANCELLED if payload.result == "refund" else NotificationType.ORDER_COMPLETED,
         title=buyer_title,
         message=buyer_message,
-        data={"order_id": str(
-            order_id), "escrow_result": payload.result, "note": payload.note or ""},
+        data={"order_id": str(order_id), "escrow_result": payload.result, "note": payload.note or ""},
     )
     await crud_notification.create_notification(
         db=db,
@@ -282,8 +323,7 @@ async def resolve_escrow_dispute(
         type=NotificationType.ORDER_COMPLETED if payload.result == "release" else NotificationType.ORDER_CANCELLED,
         title=seller_title,
         message=seller_message,
-        data={"order_id": str(
-            order_id), "escrow_result": payload.result, "note": payload.note or ""},
+        data={"order_id": str(order_id), "escrow_result": payload.result, "note": payload.note or ""},
     )
 
     await _log_admin_action(

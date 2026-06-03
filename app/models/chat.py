@@ -3,10 +3,9 @@ Chat models: Conversation, Message, Participant
 """
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
 from sqlalchemy import DateTime, String
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import Field, SQLModel
 
 
 def now():
@@ -17,7 +16,7 @@ class ChatConversation(SQLModel, table=True):
     __tablename__ = "chat_conversations"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    listing_id: Optional[uuid.UUID] = Field(
+    listing_id: uuid.UUID | None = Field(
         default=None, foreign_key="listings.id")
     created_at: datetime = Field(
         default_factory=now, sa_type=DateTime(timezone=True))

@@ -4,22 +4,21 @@ CRUD operations for Escrow.
 Handles escrow account management for secure order transactions.
 """
 import uuid
-from decimal import Decimal
-from typing import Optional
 from datetime import datetime, timezone
+from decimal import Decimal
 
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func
 
-from app.models.escrow import Escrow
 from app.models.enums import EscrowStatus
+from app.models.escrow import Escrow
 
 
 async def get_escrow_by_id(
     db: AsyncSession,
     escrow_id: uuid.UUID
-) -> Optional[Escrow]:
+) -> Escrow | None:
     """Get escrow by ID."""
     result = await db.execute(
         select(Escrow).where(Escrow.id == escrow_id)
@@ -30,7 +29,7 @@ async def get_escrow_by_id(
 async def get_escrow_by_order_id(
     db: AsyncSession,
     order_id: uuid.UUID
-) -> Optional[Escrow]:
+) -> Escrow | None:
     """Get escrow by order ID."""
     result = await db.execute(
         select(Escrow).where(Escrow.order_id == order_id)
@@ -74,7 +73,7 @@ async def create_escrow(
 async def fund_escrow(
     db: AsyncSession,
     escrow_id: uuid.UUID
-) -> Optional[Escrow]:
+) -> Escrow | None:
     """
     Mark escrow as funded by buyer.
 
@@ -107,7 +106,7 @@ async def fund_escrow(
 async def request_release(
     db: AsyncSession,
     escrow_id: uuid.UUID
-) -> Optional[Escrow]:
+) -> Escrow | None:
     """
     Mark escrow as requesting release (buyer received goods).
 
@@ -143,7 +142,7 @@ async def request_release(
 async def confirm_release(
     db: AsyncSession,
     escrow_id: uuid.UUID
-) -> Optional[Escrow]:
+) -> Escrow | None:
     """
     Confirm escrow release (seller received payment).
 
@@ -180,7 +179,7 @@ async def open_dispute(
     db: AsyncSession,
     escrow_id: uuid.UUID,
     reason: str
-) -> Optional[Escrow]:
+) -> Escrow | None:
     """
     Open a dispute on escrow.
 
@@ -215,7 +214,7 @@ async def open_dispute(
 async def refund_escrow(
     db: AsyncSession,
     escrow_id: uuid.UUID
-) -> Optional[Escrow]:
+) -> Escrow | None:
     """
     Refund escrow (return funds to buyer, close order).
 
@@ -238,6 +237,52 @@ async def refund_escrow(
     escrow.status = EscrowStatus.REFUNDED.value
     escrow.updated_at = datetime.now(timezone.utc)
 
+    db.add(escrow)
+    await db.commit()
+    await db.refresh(escrow)
+    return escrow
+
+
+async def update_escrow_status(
+    db: AsyncSession,
+    escrow_id: uuid.UUID,
+    new_status: EscrowStatus,
+) -> Escrow | None:
+    """Update escrow status (for auto-release worker)."""
+    result = await db.execute(
+        select(Escrow)
+        .where(Escrow.id == escrow_id)
+        .with_for_update(nowait=False)
+    )
+    escrow = result.scalar_one_or_none()
+    if not escrow:
+        return None
+    escrow.status = new_status.value
+    escrow.updated_at = datetime.now(timezone.utc)
+    db.add(escrow)
+    await db.commit()
+    await db.refresh(escrow)
+    return escrow
+
+
+async def set_delivered(
+    db: AsyncSession,
+    escrow_id: uuid.UUID,
+    delivered_at: datetime | None = None,
+) -> Escrow | None:
+    """Mark escrow as delivered (GHN webhook). Sets auto-release timer."""
+    from app.services.escrow_worker import schedule_auto_release
+    result = await db.execute(
+        select(Escrow)
+        .where(Escrow.id == escrow_id)
+        .with_for_update(nowait=False)
+    )
+    escrow = result.scalar_one_or_none()
+    if not escrow:
+        return None
+    escrow.delivered_at = delivered_at or datetime.now(timezone.utc)
+    schedule_auto_release(escrow)
+    escrow.updated_at = datetime.now(timezone.utc)
     db.add(escrow)
     await db.commit()
     await db.refresh(escrow)
@@ -286,8 +331,8 @@ async def resolve_dispute(
     escrow_id: uuid.UUID,
     admin_id: uuid.UUID,
     resolution: str,  # "refund" or "release"
-    note: Optional[str] = None,
-) -> Optional[Escrow]:
+    note: str | None = None,
+) -> Escrow | None:
     """
     Resolve a disputed escrow.
 

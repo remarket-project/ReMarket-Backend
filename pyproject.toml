@@ -24,6 +24,7 @@ dependencies = [
     "asyncpg>=0.29.0",
     "slowapi>=0.1.9",
     "minio>=7.2.0",
+    "stripe>=15.0.0",
 ]
 
 [dependency-groups]

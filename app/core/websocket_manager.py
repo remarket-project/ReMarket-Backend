@@ -6,12 +6,12 @@ Hỗ trợ nhiều kết nối cho mỗi người dùng (nhiều tab browser/thi
 """
 
 import asyncio
-import uuid
 import logging
-from typing import Dict, Set
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from fastapi import WebSocket, WebSocketDisconnect
+
+from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +44,8 @@ class WebSocketManager:
     """
 
     def __init__(self):
-        self._user_connections: Dict[uuid.UUID, Set[str]] = {}
-        self._connections: Dict[str, ConnectionInfo] = {}
+        self._user_connections: dict[uuid.UUID, set[str]] = {}
+        self._connections: dict[str, ConnectionInfo] = {}
         self._lock = asyncio.Lock()
 
     async def connect(self, websocket: WebSocket, user_id: uuid.UUID) -> str:
@@ -129,7 +129,7 @@ class WebSocketManager:
         tasks = [self.send_to_user(uid, message) for uid in user_ids]
         await asyncio.gather(*tasks, return_exceptions=True)
 
-    def get_online_users(self) -> Set[uuid.UUID]:
+    def get_online_users(self) -> set[uuid.UUID]:
         """
         Lấy tập hợp UUID người dùng hiện đang kết nối.
 

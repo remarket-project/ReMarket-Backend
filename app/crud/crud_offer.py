@@ -5,7 +5,6 @@ Handles creation, retrieval, and updates of offers (negotiations).
 """
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 from sqlalchemy import and_, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -103,7 +102,7 @@ async def create_offer(
     return db_obj
 
 
-async def get_offer_by_id(db: AsyncSession, offer_id: uuid.UUID) -> Optional[Offer]:
+async def get_offer_by_id(db: AsyncSession, offer_id: uuid.UUID) -> Offer | None:
     """Get offer by ID."""
     await expire_stale_offers(db)
     result = await db.execute(select(Offer).where(Offer.id == offer_id))

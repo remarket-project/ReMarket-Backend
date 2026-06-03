@@ -1,6 +1,6 @@
 """Admin audit trail endpoints."""
-from datetime import datetime
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, ConfigDict

@@ -4,7 +4,6 @@ CRUD operations for Category model.
 Pure database operations (no business logic).
 """
 import uuid
-from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -15,7 +14,7 @@ from app.models import Category, CategoryCreate, CategoryUpdate
 async def get_category_by_id(
     db: AsyncSession,
     category_id: uuid.UUID
-) -> Optional[Category]:
+) -> Category | None:
     """Get category by ID."""
     result = await db.execute(select(Category).where(Category.id == category_id))
     return result.scalar_one_or_none()
@@ -24,7 +23,7 @@ async def get_category_by_id(
 async def get_category_by_slug(
     db: AsyncSession,
     slug: str
-) -> Optional[Category]:
+) -> Category | None:
     """Get category by slug."""
     result = await db.execute(select(Category).where(Category.slug == slug))
     return result.scalar_one_or_none()
@@ -62,7 +61,7 @@ async def update_category(
     db: AsyncSession,
     category_id: uuid.UUID,
     category_in: CategoryUpdate
-) -> Optional[Category]:
+) -> Category | None:
     """Update existing category."""
     category = await get_category_by_id(db, category_id)
     if not category:

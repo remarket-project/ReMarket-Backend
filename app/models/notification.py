@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import Column, JSON, String
+from sqlalchemy import JSON, Column, String
 from sqlmodel import Field, SQLModel
 
 from .enums import NotificationType

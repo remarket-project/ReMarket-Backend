@@ -6,14 +6,13 @@ Handles user wallets, balances, and transaction history.
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, String, DateTime
+from sqlalchemy import Column, DateTime, String
 from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
     from app.models.user import User
-    from app.models.order import Order
 
 
 def get_datetime_utc() -> datetime:
@@ -89,15 +88,35 @@ class WalletTransaction(SQLModel, table=True):
         sa_column=Column(String(50)),
         description="Transaction type"
     )
-    description: Optional[str] = Field(default=None, max_length=500)
+    description: str | None = Field(default=None, max_length=500)
 
     # References to related entities
-    order_id: Optional[uuid.UUID] = Field(
+    order_id: uuid.UUID | None = Field(
         default=None,
         foreign_key="orders.id",
         ondelete="SET NULL"
     )
-    escrow_id: Optional[uuid.UUID] = Field(default=None)
+    escrow_id: uuid.UUID | None = Field(default=None)
+
+    # Payment gateway reference
+    payment_gateway_ref: str | None = Field(default=None, max_length=255)
+    bank_code: str | None = Field(default=None, max_length=50)
+    bank_account: str | None = Field(default=None, max_length=50)
+    status: str = Field(default="completed", sa_column=Column(String(20)))
+
+    # Stripe references
+    stripe_payment_intent_id: str | None = Field(
+        default=None, max_length=255, nullable=True,
+        description="Stripe PaymentIntent ID (pi_xxx)",
+    )
+    stripe_transfer_id: str | None = Field(
+        default=None, max_length=255, nullable=True,
+        description="Stripe Transfer ID (tr_xxx)",
+    )
+    stripe_payout_id: str | None = Field(
+        default=None, max_length=255, nullable=True,
+        description="Stripe Payout ID (po_xxx)",
+    )
 
     # Balance tracking
     balance_before: Decimal = Field(

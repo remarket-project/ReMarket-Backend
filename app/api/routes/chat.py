@@ -6,7 +6,8 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUser, SessionDep
-from app.crud import crud_chat, crud_listing
+from app.core.websocket_manager import ws_manager
+from app.crud import crud_chat, crud_listing, crud_notification
 from app.models.chat import Message as ChatMessage
 from app.models.listing import Listing
 from app.schemas.listing import ListingWithImages
@@ -20,6 +21,8 @@ class ChatMessageRead(BaseModel):
     sender_id: uuid.UUID
     content: str
     created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class ChatConversationRead(BaseModel):
@@ -37,8 +40,13 @@ class ChatMessageCreate(BaseModel):
 
 
 def _build_listing_payload(listing: Listing, images) -> ListingWithImages:
-    listing_dict = listing.model_dump()
+    listing_dict = listing.model_dump(
+        exclude={"seller", "category", "images", "offers", "orders"}
+    )
     listing_dict["images"] = images
+    if listing.seller:
+        listing_dict["seller_name"] = listing.seller.full_name
+        listing_dict["seller_avatar_url"] = listing.seller.avatar_url
     return ListingWithImages(**listing_dict)
 
 
@@ -163,4 +171,50 @@ async def send_message(
         sender_id=current_user.id,
         content=payload.content,
     )
+
+    participants = await crud_chat.get_conversation_participants(db, conversation.id)
+
+    ws_message = {
+        "type": "chat_message",
+        "conversation_id": str(conversation.id),
+        "message": {
+            "id": str(message.id),
+            "conversation_id": str(message.conversation_id),
+            "sender_id": str(message.sender_id),
+            "content": message.content,
+            "created_at": message.created_at.isoformat(),
+        },
+    }
+
+    for participant in participants:
+        if participant.user_id != current_user.id:
+            await ws_manager.send_to_user(participant.user_id, ws_message)
+
+            listing_title = "sản phẩm"
+            if conversation.listing_id:
+                listing_obj = await crud_listing.get_listing(db, str(conversation.listing_id))
+                listing_title = listing_obj.title if listing_obj else "sản phẩm"
+
+            notif = await crud_notification.create_notification(
+                db,
+                user_id=participant.user_id,
+                type="offer_received",
+                title=f"Tin nhắn mới từ {current_user.full_name}",
+                message=f"{current_user.full_name} đã gửi tin nhắn về {listing_title}",
+                data={
+                    "conversation_id": str(conversation.id),
+                    "listing_id": str(conversation.listing_id) if conversation.listing_id else None,
+                    "sender_name": current_user.full_name,
+                },
+            )
+            await ws_manager.send_to_user(participant.user_id, {
+                "type": "notification",
+                "title": f"Tin nhắn mới từ {current_user.full_name}",
+                "message": f"{current_user.full_name} đã gửi tin nhắn về {listing_title}",
+                "notification_id": str(notif.id),
+                "data": {
+                    "conversation_id": str(conversation.id),
+                },
+            })
+
     return _build_message_payload(message)

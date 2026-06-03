@@ -3,11 +3,10 @@ User schemas for API endpoints.
 
 Handles user profile requests/responses.
 """
-from sqlmodel import SQLModel
-from pydantic import BaseModel
-from typing import Optional
 import uuid
 from datetime import datetime
+
+from pydantic import BaseModel
 
 from app.models import UserPrivate, UserPublic, UserUpdate
 
@@ -17,11 +16,11 @@ class UserMe(BaseModel):
     id: uuid.UUID
     email: str
     full_name: str
-    phone: Optional[str] = None
+    phone: str | None = None
     is_active: bool
     is_email_verified: bool
     role: str
-    avatar_url: Optional[str] = None
+    avatar_url: str | None = None
     rating_avg: float = 0.0
     rating_count: int = 0
     trust_score: float = 0.0

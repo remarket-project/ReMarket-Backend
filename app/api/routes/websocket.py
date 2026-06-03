@@ -15,11 +15,13 @@ Client có thể gửi:
 }
 """
 
-import uuid
 import logging
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, status
-from app.core.websocket_manager import ws_manager
+import uuid
+
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
+
 from app.core.security import decode_access_token
+from app.core.websocket_manager import ws_manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["WebSocket"])
@@ -52,8 +54,8 @@ async def websocket_endpoint(
         return
 
     # Verify user exists and is active. Use a short-lived DB session here.
-    from app.db.session import AsyncSessionLocal
     from app.crud.crud_user import get_user_by_id
+    from app.db.session import AsyncSessionLocal
 
     async with AsyncSessionLocal() as session:
         user = await get_user_by_id(session, user_id)

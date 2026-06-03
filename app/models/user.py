@@ -136,6 +136,20 @@ class User(UserBase, table=True):
     password_hash: str = Field(max_length=255)
     hashed_refresh_token: str | None = Field(default=None, max_length=255)
 
+    # Stripe Connect
+    stripe_account_id: str | None = Field(
+        default=None, max_length=255, nullable=True, index=True,
+        description="Stripe Connected Account ID (acct_xxx)",
+    )
+    stripe_onboarding_complete: bool = Field(
+        default=False,
+        description="Whether Stripe onboarding is complete",
+    )
+    stripe_account_status: str | None = Field(
+        default=None, max_length=50, nullable=True,
+        description="Stripe account status: pending, active, disabled",
+    )
+
     created_at: datetime = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),
