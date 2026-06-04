@@ -114,7 +114,7 @@ async def get_account_status(account_id: str) -> dict:
     """
     account = stripe.Account.retrieve(account_id)
 
-    requirements = account.requirements or {}
+    requirements = account.requirements.to_dict() if account.requirements else {}
     currently_due = requirements.get("currently_due", [])
     disabled_reason = requirements.get("disabled_reason")
 
@@ -185,7 +185,7 @@ async def transfer_to_connected_account(
 
     return {
         "transfer_id": transfer.id,
-        "status": transfer.status,
+        "status": transfer.to_dict().get("status", "pending"),
         "amount": int(amount_vnd),
     }
 
@@ -216,5 +216,5 @@ async def reverse_transfer(
 
     return {
         "reversal_id": reversal.id,
-        "status": reversal.status,
+        "status": reversal.to_dict().get("status", "pending"),
     }

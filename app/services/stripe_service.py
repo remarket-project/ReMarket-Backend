@@ -100,11 +100,12 @@ async def create_payout(
         payout.id, amount_cents, payout.status,
     )
 
+    payout_dict = payout.to_dict() if hasattr(payout, "to_dict") else {}
     return {
         "payout_id": payout.id,
-        "status": payout.status,
+        "status": payout_dict.get("status", "pending"),
         "amount": int(amount_vnd),
-        "arrival_date": payout.arrival_date,
+        "arrival_date": payout_dict.get("arrival_date"),
     }
 
 
@@ -132,9 +133,10 @@ async def refund_payment_intent(
 
     refund = stripe.Refund.create(**refund_params)
 
+    refund_dict = refund.to_dict() if hasattr(refund, "to_dict") else {}
     return {
         "refund_id": refund.id,
-        "status": refund.status,
+        "status": refund_dict.get("status", "succeeded"),
         "amount": int(amount_vnd) if amount_vnd else None,
     }
 
@@ -201,7 +203,7 @@ async def _handle_payment_succeeded(
     db: Any,
 ) -> None:
     """Handle payment_intent.succeeded — credit the wallet."""
-    metadata = payment_intent.metadata or {}
+    metadata = payment_intent.metadata.to_dict() if payment_intent.metadata else {}
     wallet_id = metadata.get("wallet_id")
     if not wallet_id:
         logger.error("No wallet_id in PaymentIntent %s metadata", payment_intent.id)
