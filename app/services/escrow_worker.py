@@ -1,8 +1,9 @@
-"""Escrow auto-release background worker.
+"""Escrow auto-release background worker + return request auto-expire.
 
 Khi GHN báo delivered → escrow.delivered_at được set.
 Worker định kỳ kiểm tra: nếu escrow đã delivered quá ESCROW_DISPUTE_PERIOD_DAYS
 mà không có dispute → auto release tiền cho seller.
+Also auto-expires return requests if seller doesn't respond within 2 days.
 """
 import asyncio
 import logging
@@ -15,6 +16,7 @@ from app.crud import crud_escrow, crud_wallet
 from app.db.session import AsyncSessionLocal
 from app.models.escrow import Escrow
 from app.models.enums import EscrowStatus
+from app.models.return_request import ReturnRequest, ReturnStatus
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +24,13 @@ _task: asyncio.Task | None = None
 
 
 async def _auto_release_worker() -> None:
-    """Periodic worker: release escrows that are past auto-release time."""
+    """Periodic worker: release escrows + auto-expire return requests."""
     interval = settings.ESCROW_AUTO_RELEASE_INTERVAL_SECONDS
     while True:
         try:
             async with AsyncSessionLocal() as db:
-                now = datetime.now(timezone.utc)
+                now = datetime.now(timezone.utc).replace(tzinfo=None)
+                # Auto-release escrows
                 result = await db.execute(
                     select(Escrow).where(
                         Escrow.status == EscrowStatus.FUNDED.value,
@@ -41,6 +44,32 @@ async def _auto_release_worker() -> None:
                     await _release_escrow(db, escrow)
                 if ready:
                     logger.info("Auto-released %s escrow(s)", len(ready))
+
+                # Auto-approve return requests (seller not responding in 2 days)
+                expired_pending = await db.execute(
+                    select(ReturnRequest).where(
+                        ReturnRequest.status == ReturnStatus.PENDING.value,
+                        ReturnRequest.created_at < now - timedelta(days=2),
+                    )
+                )
+                for req in expired_pending.scalars():
+                    req.status = ReturnStatus.SELLER_APPROVED.value
+                    req.seller_responded_at = now.replace(tzinfo=None)
+                    db.add(req)
+                    logger.info("Auto-approved return %s (seller timeout)", req.id)
+
+                # Auto-reject return requests (buyer not shipping in 7 days)
+                expired_shipping = await db.execute(
+                    select(ReturnRequest).where(
+                        ReturnRequest.status == ReturnStatus.SELLER_APPROVED.value,
+                        ReturnRequest.seller_responded_at < now - timedelta(days=7),
+                    )
+                )
+                for req in expired_shipping.scalars():
+                    req.status = ReturnStatus.SELLER_REJECTED.value
+                    db.add(req)
+                    logger.info("Auto-rejected return %s (buyer timeout)", req.id)
+
         except Exception:
             logger.exception("Escrow auto-release worker error")
         await asyncio.sleep(interval)

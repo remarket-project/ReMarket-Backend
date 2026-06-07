@@ -19,6 +19,7 @@ from app.crud import crud_offer
 from app.db.init_db import init_db
 from app.db.session import AsyncSessionLocal
 from app.services.escrow_worker import start_worker, stop_worker
+from app.services.ghn_polling import start_polling
 
 # Create services directory on app startup (__init__.py is handled by backend_pre_start.py)
 _services_dir = Path(__file__).parent / "services"
@@ -27,6 +28,7 @@ _services_dir.mkdir(parents=True, exist_ok=True)
 
 logger = logging.getLogger(__name__)
 offer_expiry_task: asyncio.Task | None = None
+ghn_poll_task: asyncio.Task | None = None
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -54,6 +56,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     offer_expiry_task = asyncio.create_task(_offer_expiry_worker())
     start_worker()  # Escrow auto-release worker
+    ghn_poll_task = start_polling()  # GHN polling fallback
     logger.info("Application started")
 
     yield
@@ -63,6 +66,12 @@ async def lifespan(app: FastAPI):
         offer_expiry_task.cancel()
         try:
             await offer_expiry_task
+        except asyncio.CancelledError:
+            pass
+    if ghn_poll_task:
+        ghn_poll_task.cancel()
+        try:
+            await ghn_poll_task
         except asyncio.CancelledError:
             pass
     stop_worker()  # Escrow auto-release worker

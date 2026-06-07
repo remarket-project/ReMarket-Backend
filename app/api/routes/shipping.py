@@ -1,17 +1,19 @@
 """Shipping API endpoints.
 
 GHN integration: provinces, districts, wards, fee calculation, order creation,
-and webhook for delivery status updates.
+webhook, return-order, and delivery-again.
 """
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
+from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
 
 from app.api.deps import CurrentUser, SessionDep
 from app.crud import crud_escrow, crud_order, crud_order_event
+from app.crud.crud_wallet import get_wallet_by_user_id, unlock_balance
 from app.models.enums import OrderStatus
 from app.services import ghn
 
@@ -76,6 +78,13 @@ class AvailabilityOut(BaseModel):
     available: bool
     message: str = ""
     services: list[ServiceOut] = []
+
+class ReturnOrderRequest(BaseModel):
+    order_id: UUID
+    reason: str | None = None
+
+class DeliveryAgainRequest(BaseModel):
+    order_id: UUID
 
 
 # ---------------------------------------------------------------------------
@@ -146,12 +155,10 @@ async def create_shipping_order(
     if order.seller_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only seller can create shipping order")
 
-    # Use GHN IDs from order if not explicitly provided
     to_district_id = data.to_district_id or order.shipping_district_id or 0
     to_province_id = data.to_province_id or order.shipping_province_id or 0
     to_ward_code = data.to_ward_code or order.shipping_ward_code or ""
 
-    # Build full address from order data
     to_address = data.to_address or ", ".join(filter(None, [
         order.shipping_address_detail,
         order.shipping_ward,
@@ -160,6 +167,8 @@ async def create_shipping_order(
     ]))
     to_name = data.to_name or order.shipping_name or ""
     to_phone = data.to_phone or order.shipping_phone or ""
+
+    cod_amount = int(order.final_price * 100) if order.payment_method == "cod" else 0
 
     result = await ghn.create_order(
         to_name=to_name,
@@ -172,6 +181,7 @@ async def create_shipping_order(
         insurance_value=data.insurance_value,
         service_type_id=data.service_type_id,
         note=data.note,
+        cod_amount=cod_amount,
     )
 
     order.shipping_provider = "ghn"
@@ -204,6 +214,7 @@ async def shipping_webhook(request: Request, db: SessionDep):
     order_code = payload.get("OrderCode") or payload.get("order_code")
     status_code = payload.get("Status") or payload.get("status")
     delivered_time = payload.get("DeliveryTime") or payload.get("delivery_time")
+    reason = payload.get("Reason", "")
 
     if not order_code or not status_code:
         return {"code": 400, "message": "Missing OrderCode or Status"}
@@ -213,32 +224,148 @@ async def shipping_webhook(request: Request, db: SessionDep):
         logger.warning("Order not found for tracking: %s", order_code)
         return {"code": 404, "message": "Order not found"}
 
-    # Map GHN status codes:
-    # ready_to_pick = "ready_to_pick"  -> seller chưa gửi
-    # picking = "picking"              -> đang lấy hàng
-    # picked = "picked"                -> đã lấy
-    # delivering = "delivering"        -> đang giao
-    # delivered = "delivered"          -> đã giao
     if status_code in ("delivered", "DELIVERED"):
-        order.status = OrderStatus.DELIVERED
-        order.delivered_at = datetime.now(timezone.utc)
-        if delivered_time:
-            try:
-                order.delivered_at = datetime.fromisoformat(delivered_time.replace("Z", "+00:00"))
-            except ValueError:
-                pass
+        await _handle_delivered(order, order_code, delivered_time, db)
 
+    elif status_code in ("delivery_fail", "DELIVERY_FAIL"):
+        await _handle_delivery_fail(order, order_code, reason, db)
+
+    elif status_code in ("returned", "RETURNED"):
+        await _handle_returned(order, order_code, db)
+
+    elif status_code in ("cancel", "CANCELLED"):
+        await _handle_cancelled(order, order_code, db)
+
+    elif status_code in ("return", "returning", "waiting_to_return"):
+        order.status = OrderStatus.RETURNING
+        db.add(order)
+        await crud_order_event.create_order_event(db, order.id, "RETURNING",
+            f"GHN returning: {order_code}", actor_id=None)
+
+    else:
+        logger.info("GHN status update (ignored): %s -> %s", order_code, status_code)
+
+    await db.commit()
+    return {"code": 200, "message": "OK"}
+
+
+async def _handle_delivered(order, order_code, delivered_time, db):
+    order.status = OrderStatus.DELIVERED
+    order.delivered_at = datetime.now(timezone.utc)
+    if delivered_time:
+        try:
+            order.delivered_at = datetime.fromisoformat(delivered_time.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+
+    if order.payment_method == "wallet":
         escrow = await crud_escrow.get_escrow_by_order_id(db, order.id)
         if escrow:
             from app.services.escrow_worker import schedule_auto_release
             escrow.delivered_at = order.delivered_at
             schedule_auto_release(escrow)
             db.add(escrow)
-
-        await crud_order_event.create_order_event(db, order.id, "DELIVERED",
-            f"GHN delivered: {order_code}", actor_id=None)
+    elif order.payment_method == "cod":
+        order.status = OrderStatus.COMPLETED
 
     db.add(order)
-    await db.commit()
+    await crud_order_event.create_order_event(db, order.id, "DELIVERED",
+        f"GHN delivered: {order_code}", actor_id=None)
 
-    return {"code": 200, "message": "OK"}
+
+async def _handle_delivery_fail(order, order_code, reason, db):
+    order.status = OrderStatus.DELIVERY_FAILED
+    db.add(order)
+    await crud_order_event.create_order_event(db, order.id, "DELIVERY_FAILED",
+        f"GHN delivery failed: {reason}")
+
+
+async def _handle_returned(order, order_code, db):
+    order.status = OrderStatus.RETURNED
+    db.add(order)
+
+    if order.payment_method == "wallet":
+        escrow = await crud_escrow.get_escrow_by_order_id(db, order.id)
+        if escrow and escrow.status == "funded":
+            buyer_wallet = await get_wallet_by_user_id(db, order.buyer_id)
+            if buyer_wallet:
+                await unlock_balance(db, buyer_wallet.id, escrow.amount, order.id,
+                    description=f"Refund from return: {order_code}")
+            escrow.status = "refunded"
+            db.add(escrow)
+
+    await crud_order_event.create_order_event(db, order.id, "RETURNED",
+        f"GHN returned: {order_code}", actor_id=None)
+
+
+async def _handle_cancelled(order, order_code, db):
+    order.status = OrderStatus.CANCELLED
+    db.add(order)
+
+    escrow = await crud_escrow.get_escrow_by_order_id(db, order.id)
+    if escrow and escrow.status == "funded":
+        buyer_wallet = await get_wallet_by_user_id(db, order.buyer_id)
+        if buyer_wallet:
+            await unlock_balance(db, buyer_wallet.id, escrow.amount, order.id,
+                description=f"Refund from cancel: {order_code}")
+        escrow.status = "refunded"
+        db.add(escrow)
+
+    await crud_order_event.create_order_event(db, order.id, "CANCELLED",
+        f"GHN cancelled: {order_code}", actor_id=None)
+
+
+@router.post("/return-order")
+async def return_shipping_order(
+    current_user: CurrentUser,
+    db: SessionDep,
+    data: ReturnOrderRequest,
+):
+    """Seller yêu cầu GHN trả hàng về."""
+    order = await crud_order.get_order_by_id(db, data.order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.seller_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only seller can request return")
+    if order.status not in (OrderStatus.DELIVERY_FAILED, OrderStatus.SHIPPING):
+        raise HTTPException(status_code=400, detail="Order must be delivery_failed or shipping to return")
+    if not order.tracking_number:
+        raise HTTPException(status_code=400, detail="No tracking number")
+
+    result = await ghn.return_order([order.tracking_number])
+    if result and result[0].get("result"):
+        order.status = OrderStatus.RETURNING
+        db.add(order)
+        await db.commit()
+        await crud_order_event.create_order_event(db, order.id, "RETURN_ORDERED",
+            f"Return requested for {order.tracking_number}", actor_id=current_user.id)
+        return {"status": "returning", "message": "Return requested successfully", "detail": result[0]}
+    raise HTTPException(status_code=502, detail=f"GHN return failed: {result}")
+
+
+@router.post("/delivery-again")
+async def delivery_again_shipping(
+    current_user: CurrentUser,
+    db: SessionDep,
+    data: DeliveryAgainRequest,
+):
+    """Seller yêu cầu GHN giao lại."""
+    order = await crud_order.get_order_by_id(db, data.order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.seller_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only seller can request delivery again")
+    if order.status != OrderStatus.DELIVERY_FAILED:
+        raise HTTPException(status_code=400, detail="Order must be delivery_failed to retry delivery")
+    if not order.tracking_number:
+        raise HTTPException(status_code=400, detail="No tracking number")
+
+    result = await ghn.delivery_again([order.tracking_number])
+    if result and result[0].get("result"):
+        order.status = OrderStatus.SHIPPING
+        db.add(order)
+        await db.commit()
+        await crud_order_event.create_order_event(db, order.id, "DELIVERY_AGAIN",
+            f"Delivery again requested for {order.tracking_number}", actor_id=current_user.id)
+        return {"status": "shipping", "message": "Delivery again requested", "detail": result[0]}
+    raise HTTPException(status_code=502, detail=f"GHN delivery-again failed: {result}")

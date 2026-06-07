@@ -14,6 +14,7 @@ from app.api.routes import (
     offers,
     orders,
     payment,
+    returns,
     reviews,
     saved_follow,
     shipping,
@@ -64,6 +65,11 @@ api_router.include_router(websocket.router)
 # Shipping Route (GHN)
 # ============================================================================
 api_router.include_router(shipping.router)
+
+# ============================================================================
+# Returns Route
+# ============================================================================
+api_router.include_router(returns.router)
 
 # ============================================================================
 # Payment Route (Stripe)

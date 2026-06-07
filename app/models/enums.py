@@ -47,12 +47,15 @@ class PaymentMethod(str, Enum):
 
 class OrderStatus(str, Enum):
     """Status of an order."""
-    PENDING = "pending"        # Vừa tạo, chờ xác nhận
-    CONFIRMED = "confirmed"    # Đã xác nhận
-    SHIPPING = "shipping"      # Đang vận chuyển
-    DELIVERED = "delivered"    # Đã giao hàng
-    COMPLETED = "completed"    # Hoàn tất (có thể review)
-    CANCELLED = "cancelled"    # Hủy
+    PENDING = "pending"            # Vừa tạo, chờ xác nhận
+    CONFIRMED = "confirmed"        # Đã xác nhận
+    SHIPPING = "shipping"          # Đang vận chuyển
+    DELIVERED = "delivered"        # Đã giao hàng
+    DELIVERY_FAILED = "delivery_failed"  # Giao thất bại
+    RETURNING = "returning"        # Đang hoàn trả
+    RETURNED = "returned"          # Đã hoàn trả
+    COMPLETED = "completed"        # Hoàn tất (có thể review)
+    CANCELLED = "cancelled"        # Hủy
 
 
 class NotificationType(str, Enum):

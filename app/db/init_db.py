@@ -15,6 +15,7 @@ import app.models.notification  # noqa: F401
 import app.models.offer  # noqa: F401
 import app.models.order  # noqa: F401
 import app.models.order_event  # noqa: F401
+import app.models.return_request  # noqa: F401
 import app.models.review  # noqa: F401
 import app.models.saved_follow  # noqa: F401
 import app.models.static_content  # noqa: F401
@@ -50,6 +51,9 @@ _MIGRATIONS: list[str] = [
     """ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS bank_code VARCHAR(50)""",
     """ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS bank_account VARCHAR(50)""",
     """ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'completed'""",
+    # ---- return_requests table (created by SQLModel, but ensure) ----
+    """ALTER TABLE return_requests ADD COLUMN IF NOT EXISTS return_fee INTEGER NOT NULL DEFAULT 0""",
+    """ALTER TABLE return_requests ADD COLUMN IF NOT EXISTS refund_amount INTEGER NOT NULL DEFAULT 0""",
 ]
 
 

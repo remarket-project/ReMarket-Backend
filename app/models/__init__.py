@@ -20,6 +20,7 @@ from app.models.enums import (
     TransactionType,
     UserRole,
 )
+from app.models.return_request import ReturnReason, ReturnRequest, ReturnStatus
 from app.models.escrow import Escrow
 from app.models.listing import (
     Listing,
@@ -97,6 +98,10 @@ __all__ = [
     "UserMessage",
     "Token",
     "NewPassword",
+    # Models
+    "ReturnRequest",
+    "ReturnReason",
+    "ReturnStatus",
     # Enums
     "UserRole",
     "ListingStatus",

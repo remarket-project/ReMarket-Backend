@@ -51,8 +51,11 @@ class EscrowRead(BaseModel):
     resolved_at: datetime | None
     dispute_status: str | None
     funded_at: datetime | None
+    delivered_at: datetime | None
     release_requested_at: datetime | None
     released_at: datetime | None
+    auto_release_at: datetime | None
+    release_trigger: str | None
     created_at: datetime
     updated_at: datetime
 
