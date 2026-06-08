@@ -1,83 +1,63 @@
-"""
-Order model for ReMarket.
-
-Handles completed purchases, tracking buyer, seller, and transaction details.
-"""
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, DateTime, String
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import Field, Relationship
 
-from .enums import OrderStatus, PaymentMethod
-
-if TYPE_CHECKING:
-    from .escrow import Escrow
-    from .listing import Listing
-    from .review import Review
-    from .user import User
+from app.models.base import BaseUUID
+from app.models.enums import OrderStatus, PaymentMethod
 
 
-class Order(SQLModel, table=True):
-    """Order database model."""
-
+class Order(BaseUUID, table=True):
     __tablename__ = "orders"
 
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    buyer_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE")
-    seller_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE")
-    listing_id: uuid.UUID = Field(
-        foreign_key="listings.id", ondelete="CASCADE")
-    final_price: Decimal = Field(decimal_places=2, max_digits=12)
-    status: OrderStatus = Field(
-        default=OrderStatus.PENDING, sa_column=Column(String(50))
+    buyer_id: uuid.UUID = Field(foreign_key="users.id", nullable=False, index=True)
+    seller_id: uuid.UUID = Field(foreign_key="users.id", nullable=False, index=True)
+    listing_id: uuid.UUID = Field(foreign_key="listings.id", nullable=False)
+    offer_id: uuid.UUID | None = Field(
+        default=None, foreign_key="offers.id", nullable=True
     )
 
-    # Payment method
-    payment_method: PaymentMethod = Field(
-        default=PaymentMethod.WALLET, sa_column=Column(String(20))
-    )
+    final_price: Decimal = Field(default=0, max_digits=12, decimal_places=2)
 
-    # Shipping & Delivery
-    shipping_provider: str | None = Field(default=None, max_length=50)
+    status: OrderStatus = Field(default=OrderStatus.PENDING)
+    payment_method: PaymentMethod = Field(default=PaymentMethod.WALLET)
+
+    # Shipping info
+    shipping_provider: str | None = None
     shipping_service_type: int | None = None
-    shipping_fee: Decimal | None = Field(default=None, decimal_places=2, max_digits=12)
-    tracking_number: str | None = Field(default=None, max_length=50, index=True)
+    shipping_fee: Decimal | None = None
+    tracking_number: str | None = None
     expected_delivery_at: datetime | None = None
     delivered_at: datetime | None = None
 
-    # Shipping address (snapshot at time of order)
-    shipping_name: str | None = Field(default=None, max_length=255)
-    shipping_phone: str | None = Field(default=None, max_length=20)
-    shipping_province: str | None = Field(default=None, max_length=100)
-    shipping_district: str | None = Field(default=None, max_length=100)
-    shipping_ward: str | None = Field(default=None, max_length=100)
-    shipping_address_detail: str | None = Field(default=None, max_length=255)
-    shipping_note: str | None = Field(default=None, max_length=500)
+    # Shipping address (text)
+    shipping_name: str | None = None
+    shipping_phone: str | None = None
+    shipping_province: str | None = None
+    shipping_district: str | None = None
+    shipping_ward: str | None = None
+    shipping_address_detail: str | None = None
+    shipping_note: str | None = None
 
-    # GHN IDs for shipping (dùng khi tạo đơn GHN)
+    # Shipping address (GHN IDs)
     shipping_province_id: int | None = None
     shipping_district_id: int | None = None
-    shipping_ward_code: str | None = Field(default=None, max_length=20)
+    shipping_ward_code: str | None = None
 
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    # Auto-complete / dispute timers
+    delivered_at_record: datetime | None = None          # Thời gian admin bấm DELIVERED
+    auto_complete_at: datetime | None = None             # Tự động COMPLETED sau 48h
+    auto_release_at: datetime | None = None              # Tự động RELEASE escrow
+
+    created_at: datetime = Field(default_factory=lambda: datetime.utcnow())
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+        default_factory=lambda: datetime.utcnow(),
+        sa_column_kwargs={"onupdate": lambda: datetime.utcnow()},
+    )
 
     # Relationships
-    buyer: "User" = Relationship(
-        back_populates="orders_as_buyer",
-        sa_relationship_kwargs={"foreign_keys": "Order.buyer_id"}
-    )
-    seller: "User" = Relationship(
-        back_populates="orders_as_seller",
-        sa_relationship_kwargs={"foreign_keys": "Order.seller_id"}
-    )
     listing: "Listing" = Relationship(back_populates="orders")
-    reviews: list["Review"] = Relationship(
-        back_populates="order", cascade_delete=True
-    )
-    escrow: "Escrow" = Relationship(back_populates="order")
+    buyer: "User" = Relationship(back_populates="orders_as_buyer")
+    seller: "User" = Relationship(back_populates="orders_as_seller")
+    events: list["OrderEvent"] = Relationship(back_populates="order")

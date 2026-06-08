@@ -59,6 +59,7 @@ class OrderRead(OrderBase):
     shipping_province_id: int | None = None
     shipping_district_id: int | None = None
     shipping_ward_code: str | None = None
+    offer_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 

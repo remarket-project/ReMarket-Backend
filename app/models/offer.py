@@ -31,6 +31,9 @@ class Offer(SQLModel, table=True):
     status: OfferStatus = Field(
         default=OfferStatus.PENDING, sa_column=Column(String(50))
     )
+    order_id: uuid.UUID | None = Field(
+        default=None, foreign_key="orders.id", ondelete="SET NULL", nullable=True
+    )
 
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))

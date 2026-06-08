@@ -46,6 +46,10 @@ async def create_offer(
                 data={"offer_id": str(offer.id),
                       "listing_id": str(listing.id)},
             )
+            await ws_manager.send_to_user(listing.seller_id, {
+                "type": "offer_received",
+                "user_id": str(listing.seller_id),
+            })
         return offer
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -169,9 +173,7 @@ async def update_offer_status(
                 detail=f"Người mua không thể cập nhật yêu cầu với trạng thái: {offer.status}"
             )
 
-    if status_update.status == OfferStatus.ACCEPTED and listing.status == ListingStatus.SOLD:
-        raise HTTPException(status_code=400, detail="Bài đăng đã bán")
-
+    # Remove redundant check — CRUD handles listing.status validation with FOR UPDATE
     previous_status = offer.status
     try:
         updated_offer, rejected_offers = await crud_offer.update_offer_status(
@@ -190,14 +192,12 @@ async def update_offer_status(
             seller_id=listing.seller_id,
             listing_id=offer.listing_id,
             final_price=offer.offer_price,
-            status=OrderStatus.PENDING
+            status=OrderStatus.PENDING,
+            offer_id=offer.id,  # BUG-10: trace from order back to offer
         )
         db.add(order)
 
-        listing.status = ListingStatus.SOLD
-        db.add(listing)
-
-        # Auto-create escrow for newly created order if missing.
+        # Auto-create escrow for newly created order.
         await db.flush()
         existing_escrow = await crud_escrow.get_escrow_by_order_id(db, order.id)
         if not existing_escrow:
@@ -211,6 +211,10 @@ async def update_offer_status(
                 seller_wallet_id=seller_wallet.id,
             )
         order_id = order.id
+
+        # BUG-07: Persist order_id on offer so FE can show "Xem đơn hàng" link
+        updated_offer.order_id = order.id
+        db.add(updated_offer)
 
     await db.commit()
     await db.refresh(updated_offer)
@@ -230,7 +234,6 @@ async def update_offer_status(
                 "type": "offer_rejected",
                 "offer_id": str(rejected_offer.id),
                 "listing_id": str(listing.id),
-                "title": "Yêu cầu mua bị từ chối",
             })
 
     if status_update.status == OfferStatus.ACCEPTED:
@@ -247,8 +250,6 @@ async def update_offer_status(
             "offer_id": str(offer.id),
             "listing_id": str(listing.id),
             "order_id": str(order_id) if order_id else None,
-            "title": "Đơn hàng đã tạo",
-            "message": f"Yêu cầu mua cho '{listing.title}' đã được chấp nhận. Đơn hàng đã tạo.",
         })
 
         await crud_notification.create_notification(
@@ -286,9 +287,6 @@ async def update_offer_status(
             "type": str(notification_type.value),
             "offer_id": str(offer.id),
             "listing_id": str(listing.id),
-            "notification_id": str(notif.id),
-            "title": "Trạng thái yêu cầu mua được cập nhật",
-            "message": message,
         })
 
     if previous_status != OfferStatus.EXPIRED and updated_offer.status == OfferStatus.EXPIRED:
@@ -304,9 +302,6 @@ async def update_offer_status(
             "type": "offer_expired",
             "offer_id": str(offer.id),
             "listing_id": str(listing.id),
-            "notification_id": str(notif.id),
-            "title": "Yêu cầu mua hết hạn",
-            "message": "Yêu cầu mua của bạn đã hết hạn do quá thời gian.",
         })
 
     if order_id:

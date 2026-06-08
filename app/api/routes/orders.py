@@ -7,16 +7,19 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.api.deps import CurrentUser, SessionDep
+from app.core.websocket_manager import ws_manager
 from app.crud import (
     crud_escrow,
     crud_listing,
     crud_notification,
+    crud_offer,
     crud_order,
     crud_order_event,
     crud_user,
     crud_wallet,
 )
-from app.models.enums import EscrowStatus, ListingStatus, NotificationType, OrderStatus, PaymentMethod
+from app.models.enums import EscrowStatus, ListingStatus, NotificationType, OfferStatus, OrderStatus, PaymentMethod
+from app.models.offer import Offer
 from app.schemas.order import OrderDirectCreate, OrderRead, OrderStatusUpdate
 from app.services import send_order_completed_email, send_order_created_email
 
@@ -100,7 +103,11 @@ async def create_direct_order(
                 )
                 await crud_escrow.fund_escrow(db, escrow.id)
             except ValueError:
-                pass  # Insufficient balance: leave escrow unfunded
+                # BUG-08 FIX: Báo lỗi rõ ràng thay vì silent pass
+                raise HTTPException(
+                    status_code=400,
+                    detail="Số dư ví không đủ. Vui lòng nạp thêm tiền hoặc chọn COD."
+                )
 
     # Gửi email
     buyer = await crud_user.get_user_by_id(db, current_user.id)
@@ -139,6 +146,22 @@ async def create_direct_order(
             data={"offer_id": str(rejected_offer.id),
                   "listing_id": str(listing.id)},
         )
+        await ws_manager.send_to_user(rejected_offer.buyer_id, {
+            "type": "listing_sold",
+            "listing_id": str(listing.id),
+        })
+
+    # WS: notify seller about new order
+    await ws_manager.send_to_user(listing.seller_id, {
+        "type": "new_order",
+        "user_id": str(listing.seller_id),
+    })
+
+    # WS: order_status_updated for buyer
+    await ws_manager.send_to_user(current_user.id, {
+        "type": "order_status_updated",
+        "order_id": str(order.id),
+    })
 
     return order
 
@@ -203,7 +226,7 @@ async def complete_order(
         raise HTTPException(
             status_code=403, detail="Chỉ người mua mới có thể hoàn thành đơn hàng")
 
-    if order.status != OrderStatus.PENDING:
+    if order.status != OrderStatus.DELIVERED:
         raise HTTPException(
             status_code=400, detail=f"Không thể hoàn thành đơn hàng ở trạng thái {order.status}")
 
@@ -235,6 +258,16 @@ async def complete_order(
         data={"order_id": str(order.id), "listing_id": str(order.listing_id)},
     )
 
+    # WS events
+    await ws_manager.send_to_user(order.buyer_id, {
+        "type": "order_status_updated",
+        "order_id": str(order.id),
+    })
+    await ws_manager.send_to_user(order.seller_id, {
+        "type": "order_status_updated",
+        "order_id": str(order.id),
+    })
+
     return updated_order
 
 
@@ -258,13 +291,6 @@ async def cancel_order(
 
     updated_order = await crud_order.cancel_order(db, order)
 
-    # Revert listing status from SOLD back to ACTIVE if needed
-    listing = await crud_listing.get_listing(db, str(order.listing_id))
-    if listing and listing.status == ListingStatus.SOLD:
-        listing.status = ListingStatus.ACTIVE
-        db.add(listing)
-        await db.commit()
-
     target_user_id = order.seller_id if current_user.id == order.buyer_id else order.buyer_id
     await crud_notification.create_notification(
         db=db,
@@ -274,6 +300,17 @@ async def cancel_order(
         message="Đơn hàng đã bị hủy bởi bên kia.",
         data={"order_id": str(order.id), "listing_id": str(order.listing_id)},
     )
+
+    # WS events
+    await ws_manager.send_to_user(order.buyer_id, {
+        "type": "order_cancelled",
+        "order_id": str(order.id),
+    })
+    await ws_manager.send_to_user(order.seller_id, {
+        "type": "order_cancelled",
+        "order_id": str(order.id),
+    })
+
     return updated_order
 
 
@@ -338,5 +375,15 @@ async def update_order_status(
             message=message,
             data={"order_id": str(order.id), "status": data.status},
         )
+
+    # WS events
+    await ws_manager.send_to_user(order.buyer_id, {
+        "type": "order_status_updated",
+        "order_id": str(order.id),
+    })
+    await ws_manager.send_to_user(order.seller_id, {
+        "type": "order_status_updated",
+        "order_id": str(order.id),
+    })
 
     return order

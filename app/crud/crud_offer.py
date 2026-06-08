@@ -38,58 +38,45 @@ async def expire_stale_offers(db: AsyncSession) -> int:
     return int(result.rowcount or 0)
 
 
-async def check_existing_pending_offer(
-    db: AsyncSession, buyer_id: uuid.UUID, listing_id: uuid.UUID
-) -> bool:
-    """Check if buyer already has pending/countered offer on listing."""
-    result = await db.execute(
-        select(Offer).where(
-            and_(
-                Offer.buyer_id == buyer_id,
-                Offer.listing_id == listing_id,
-                or_(
-                    Offer.status == OfferStatus.PENDING,
-                    Offer.status == OfferStatus.COUNTERED
-                )
-            )
-        )
-    )
-    return result.scalar_one_or_none() is not None
-
-
 async def create_offer(
     db: AsyncSession,
     listing_id: uuid.UUID,
     buyer_id: uuid.UUID,
     offer_price
 ) -> Offer:
-    """Create offer with validation."""
+    """Create offer with validation — FIXED race condition with FOR UPDATE."""
     await expire_stale_offers(db)
 
-    # Check listing exists
-    result = await db.execute(select(Listing).where(Listing.id == listing_id))
+    # Lock listing row to prevent concurrent status change
+    result = await db.execute(
+        select(Listing).where(Listing.id == listing_id).with_for_update()
+    )
     listing = result.scalar_one_or_none()
     if not listing:
         raise ValueError("Listing not found")
 
-    # Buyer can't offer on own listing
     if listing.seller_id == buyer_id:
         raise ValueError("You cannot make an offer on your own listing")
 
-    # Listing must be ACTIVE
     if listing.status != ListingStatus.ACTIVE:
-        raise ValueError(
-            f"Cannot make offer on listing with status: {listing.status}")
+        raise ValueError(f"Cannot make offer on listing with status: {listing.status}")
 
-    # Listing must be negotiable
     if not listing.is_negotiable:
         raise ValueError("This listing is not negotiable")
 
-    # Anti-spam: one active offer per listing per buyer
-    if await check_existing_pending_offer(db, buyer_id, listing_id):
+    # Lock-check for existing pending offer (same transaction)
+    pending_result = await db.execute(
+        select(Offer).where(
+            and_(
+                Offer.buyer_id == buyer_id,
+                Offer.listing_id == listing_id,
+                or_(Offer.status == OfferStatus.PENDING, Offer.status == OfferStatus.COUNTERED)
+            )
+        ).with_for_update()
+    )
+    if pending_result.scalar_one_or_none():
         raise ValueError("You already have a pending offer on this listing")
 
-    # Create offer
     db_obj = Offer(
         listing_id=listing_id,
         buyer_id=buyer_id,
@@ -170,10 +157,12 @@ async def update_offer_status(
     new_status: OfferStatus,
     counter_price=None,
 ) -> tuple[Offer, list[Offer]]:
-    """Update offer status."""
-    result = await db.execute(select(Offer).where(Offer.id == offer_id))
+    """Update offer status — FIXED race condition with FOR UPDATE on offer + listing."""
+    # Lock offer row
+    result = await db.execute(
+        select(Offer).where(Offer.id == offer_id).with_for_update()
+    )
     offer = result.scalar_one_or_none()
-
     if not offer:
         raise ValueError("Offer not found")
 
@@ -187,18 +176,26 @@ async def update_offer_status(
     offer.status = new_status
     offer.updated_at = utc_now()
 
-    # If accepting, reject other pending offers on same listing
+    # If accepting, lock listing + reject other offers atomically
     if new_status == OfferStatus.ACCEPTED:
+        # Lock listing to prevent double-sell
+        listing_result = await db.execute(
+            select(Listing).where(Listing.id == offer.listing_id).with_for_update()
+        )
+        listing = listing_result.scalar_one_or_none()
+        if not listing:
+            raise ValueError("Listing not found")
+        if listing.status == ListingStatus.SOLD:
+            raise ValueError("This listing has already been sold")
+
+        # Lock and reject other pending/countered offers
         reject_result = await db.execute(
             select(Offer)
             .where(
                 and_(
                     Offer.listing_id == offer.listing_id,
                     Offer.id != offer.id,
-                    Offer.status.in_([
-                        OfferStatus.PENDING,
-                        OfferStatus.COUNTERED,
-                    ]),
+                    Offer.status.in_([OfferStatus.PENDING, OfferStatus.COUNTERED]),
                 )
             )
             .with_for_update(nowait=False)
@@ -208,12 +205,8 @@ async def update_offer_status(
             rejected_offer.status = OfferStatus.REJECTED
             rejected_offer.updated_at = utc_now()
 
-        # Mark listing as sold
-        await db.execute(
-            update(Listing)
-            .where(Listing.id == offer.listing_id)
-            .values(status=ListingStatus.SOLD)
-        )
+        listing.status = ListingStatus.SOLD
+        db.add(listing)
 
     db.add(offer)
     await db.commit()

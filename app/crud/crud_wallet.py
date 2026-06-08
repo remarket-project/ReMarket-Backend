@@ -11,6 +11,7 @@ from sqlalchemy import desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+from app.core.websocket_manager import ws_manager
 from app.models.enums import TransactionType
 from app.models.wallet import Wallet, WalletTransaction
 
@@ -33,6 +34,8 @@ async def get_or_create_wallet(
     """
     Get wallet for user, create if doesn't exist.
 
+    Uses FOR UPDATE + retry-on-race pattern to handle concurrent creation safely.
+
     Args:
         db: Database session
         user_id: User ID
@@ -40,15 +43,35 @@ async def get_or_create_wallet(
     Returns:
         Wallet object
     """
-    wallet = await get_wallet_by_user_id(db, user_id)
+    from sqlalchemy.exc import IntegrityError
 
-    if not wallet:
+    # Try select with FOR UPDATE first
+    result = await db.execute(
+        select(Wallet).where(Wallet.user_id == user_id).with_for_update()
+    )
+    wallet = result.scalar_one_or_none()
+    if wallet:
+        return wallet
+
+    # No wallet exists yet — try to create.
+    # Use savepoint + retry to handle concurrent insert race.
+    try:
         wallet = Wallet(user_id=user_id)
         db.add(wallet)
         await db.commit()
         await db.refresh(wallet)
-
-    return wallet
+        return wallet
+    except IntegrityError:
+        await db.rollback()
+        # Another request created the wallet between our SELECT and INSERT.
+        # Re-read with FOR UPDATE.
+        result = await db.execute(
+            select(Wallet).where(Wallet.user_id == user_id).with_for_update()
+        )
+        wallet = result.scalar_one_or_none()
+        if wallet:
+            return wallet
+        raise ValueError("Failed to create wallet due to concurrent access")
 
 
 async def add_balance(
@@ -115,6 +138,12 @@ async def add_balance(
     await db.commit()
     await db.refresh(wallet)
     await db.refresh(transaction)
+
+    # WS invalidation event
+    await ws_manager.send_to_user(wallet.user_id, {
+        "type": "wallet_balance",
+        "user_id": str(wallet.user_id),
+    })
 
     return wallet, transaction
 
@@ -186,6 +215,12 @@ async def lock_balance(
     await db.refresh(wallet)
     await db.refresh(transaction)
 
+    # WS invalidation event
+    await ws_manager.send_to_user(wallet.user_id, {
+        "type": "wallet_balance",
+        "user_id": str(wallet.user_id),
+    })
+
     return wallet, transaction
 
 
@@ -250,6 +285,12 @@ async def unlock_balance(
     await db.commit()
     await db.refresh(wallet)
     await db.refresh(transaction)
+
+    # WS invalidation event
+    await ws_manager.send_to_user(wallet.user_id, {
+        "type": "wallet_balance",
+        "user_id": str(wallet.user_id),
+    })
 
     return wallet, transaction
 
@@ -342,6 +383,16 @@ async def transfer_locked_to_user(
     await db.refresh(to_wallet)
     await db.refresh(from_tx)
     await db.refresh(to_tx)
+
+    # WS invalidation events for both parties
+    await ws_manager.send_to_user(from_wallet.user_id, {
+        "type": "wallet_balance",
+        "user_id": str(from_wallet.user_id),
+    })
+    await ws_manager.send_to_user(to_wallet.user_id, {
+        "type": "wallet_balance",
+        "user_id": str(to_wallet.user_id),
+    })
 
     return from_wallet, to_wallet, from_tx, to_tx
 

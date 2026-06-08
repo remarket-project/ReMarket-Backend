@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.crud.crud_order_event import create_order_event
-from app.models.enums import ListingStatus, OfferStatus, OrderStatus
+from app.models.enums import EscrowStatus, ListingStatus, OfferStatus, OrderStatus
+from app.models.escrow import Escrow
 from app.models.listing import Listing
 from app.models.offer import Offer
 from app.models.order import Order
@@ -132,7 +133,12 @@ async def create_direct_order(
 
 
 async def complete_order(db: AsyncSession, order: Order) -> Order:
-    """Complete an order and update seller stats."""
+    """Complete an order, release escrow, and update seller stats.
+
+    FIXED BUG-04: Now also releases escrow if funded.
+    """
+    from app.crud.crud_wallet import transfer_locked_to_user
+
     order.status = OrderStatus.COMPLETED
     order.updated_at = utc_now()
 
@@ -143,6 +149,25 @@ async def complete_order(db: AsyncSession, order: Order) -> Order:
         .values(completed_orders=User.completed_orders + 1)
     )
 
+    # Release escrow if funded (BUG-04 fix)
+    escrow_result = await db.execute(
+        select(Escrow).where(Escrow.order_id == order.id).with_for_update()
+    )
+    escrow = escrow_result.scalar_one_or_none()
+    if escrow and escrow.status == EscrowStatus.FUNDED.value:
+        await transfer_locked_to_user(
+            db=db,
+            from_wallet_id=escrow.buyer_wallet_id,
+            to_wallet_id=escrow.seller_wallet_id,
+            amount=escrow.amount,
+            order_id=order.id,
+            description=f"Payment for completed order {order.id}",
+        )
+        escrow.status = EscrowStatus.RELEASED.value
+        escrow.released_at = utc_now()
+        escrow.updated_at = utc_now()
+        db.add(escrow)
+
     await db.commit()
     await db.refresh(order)
     await create_order_event(db, order.id, "ORDER_COMPLETED", "Order completed", actor_id=order.buyer_id)
@@ -150,16 +175,46 @@ async def complete_order(db: AsyncSession, order: Order) -> Order:
 
 
 async def cancel_order(db: AsyncSession, order: Order) -> Order:
-    """Cancel an order and revert listing to ACTIVE."""
+    """Cancel an order, refund escrow if funded, and revert listing to ACTIVE.
+
+    FIXED BUG-03: Now also refunds escrow if funds were locked.
+    """
+    from app.crud.crud_wallet import unlock_balance
+
     order.status = OrderStatus.CANCELLED
     order.updated_at = utc_now()
 
-    # Revert listing status to ACTIVE
-    await db.execute(
-        update(Listing)
-        .where(Listing.id == order.listing_id)
-        .values(status=ListingStatus.ACTIVE)
+    # Refund escrow if funded (BUG-03 fix)
+    escrow_result = await db.execute(
+        select(Escrow).where(Escrow.order_id == order.id).with_for_update()
     )
+    escrow = escrow_result.scalar_one_or_none()
+    if escrow:
+        if escrow.status == EscrowStatus.FUNDED.value:
+            await unlock_balance(
+                db=db,
+                wallet_id=escrow.buyer_wallet_id,
+                amount=escrow.amount,
+                order_id=order.id,
+                description=f"Refund for cancelled order {order.id}",
+            )
+            escrow.status = EscrowStatus.REFUNDED.value
+            escrow.updated_at = utc_now()
+            db.add(escrow)
+        elif escrow.status == EscrowStatus.PENDING.value:
+            # No funds locked yet, just mark as refunded
+            escrow.status = EscrowStatus.REFUNDED.value
+            escrow.updated_at = utc_now()
+            db.add(escrow)
+
+    # Revert listing status to ACTIVE
+    listing_result = await db.execute(
+        select(Listing).where(Listing.id == order.listing_id).with_for_update()
+    )
+    listing = listing_result.scalar_one_or_none()
+    if listing:
+        listing.status = ListingStatus.ACTIVE
+        db.add(listing)
 
     await db.commit()
     await db.refresh(order)
@@ -172,8 +227,11 @@ async def update_order_status(
     order_id: uuid.UUID,
     new_status: OrderStatus
 ) -> Order | None:
-    """Update order status."""
-    order = await get_order_by_id(db, order_id)
+    """Update order status with FOR UPDATE to prevent race conditions."""
+    result = await db.execute(
+        select(Order).where(Order.id == order_id).with_for_update()
+    )
+    order = result.scalar_one_or_none()
     if not order:
         return None
 

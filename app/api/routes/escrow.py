@@ -4,8 +4,10 @@ Escrow API endpoints.
 Handles escrow accounts, funding, releases, and disputes.
 """
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, status
+from sqlalchemy.future import select
 
 from app.api.deps import CurrentAdmin, CurrentUser, SessionDep
 from app.core.websocket_manager import ws_manager
@@ -17,6 +19,7 @@ from app.models.enums import (
     OrderStatus,
     UserRole,
 )
+from app.models.wallet import Wallet
 from app.schemas.escrow import EscrowRead, OpenDisputeRequest
 
 router = APIRouter(prefix="/escrows", tags=["Escrow"])
@@ -120,23 +123,37 @@ async def fund_escrow(
     # Get or create buyer wallet
     buyer_wallet = await crud_wallet.get_or_create_wallet(db, current_user.id)
 
-    # Lock funds in wallet
-    try:
-        updated_wallet, transaction = await crud_wallet.lock_balance(
-            db=db,
-            wallet_id=buyer_wallet.id,
-            amount=escrow.amount,
-            order_id=order_id,
-            description=f"Escrow for order {order_id}"
-        )
-    except ValueError as e:
+    # BUG-06 FIX: Atomic lock_balance + fund_escrow in a single transaction
+    # Lock wallet with FOR UPDATE
+    wallet_result = await db.execute(
+        select(Wallet).where(Wallet.id == buyer_wallet.id).with_for_update()
+    )
+    wallet = wallet_result.scalar_one_or_none()
+    if not wallet:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            detail="Ví không tìm thấy"
+        )
+    if wallet.balance < escrow.amount:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Số dư không đủ. Khả dụng: {wallet.balance}, Yêu cầu: {escrow.amount}"
         )
 
+    # Deduct balance, increase locked
+    wallet.balance -= escrow.amount
+    wallet.locked_balance += escrow.amount
+    wallet.updated_at = datetime.now(timezone.utc)
+
     # Update escrow status
-    updated_escrow = await crud_escrow.fund_escrow(db, escrow.id)
+    escrow.status = EscrowStatus.FUNDED.value
+    escrow.funded_at = datetime.now(timezone.utc)
+    escrow.updated_at = datetime.now(timezone.utc)
+
+    db.add(wallet)
+    db.add(escrow)
+    await db.commit()
+    await db.refresh(escrow)
 
     # Send notification to seller
     seller_notification = await create_notification(
@@ -147,19 +164,15 @@ async def fund_escrow(
         description=f"Buyer đã nạp tiền escrow cho đơn hàng #{order_id}",
         related_id=str(order_id)
     )
-    await ws_manager.send_to_user(
-        order.seller_id,
-        {
-            "type": "notification",
-            "data": {
-                "id": str(seller_notification.id),
-                "type": str(seller_notification.type),
-                "title": seller_notification.title,
-                "message": seller_notification.message,
-                "data": seller_notification.data or {}
-            }
-        }
-    )
+    # WS invalidation events
+    await ws_manager.send_to_user(order.buyer_id, {
+        "type": "wallet_balance",
+        "user_id": str(order.buyer_id),
+    })
+    await ws_manager.send_to_user(order.seller_id, {
+        "type": "escrow_funded",
+        "order_id": str(order_id),
+    })
 
     return updated_escrow
 
@@ -307,19 +320,11 @@ async def request_release(
         description="Buyer xác nhận đã nhận hàng, yêu cầu giải phóng escrow",
         related_id=str(order_id)
     )
-    await ws_manager.send_to_user(
-        order.seller_id,
-        {
-            "type": "notification",
-            "data": {
-                "id": str(seller_notification.id),
-                "type": str(seller_notification.type),
-                "title": seller_notification.title,
-                "message": seller_notification.message,
-                "data": seller_notification.data or {}
-            }
-        }
-    )
+    # WS invalidation event
+    await ws_manager.send_to_user(order.seller_id, {
+        "type": "escrow_release_requested",
+        "order_id": str(order_id),
+    })
 
     return updated_escrow
 
@@ -404,20 +409,6 @@ async def confirm_release(
         description="Thanh toán đã được giải phóng. Đơn hàng hoàn thành.",
         related_id=str(order_id)
     )
-    await ws_manager.send_to_user(
-        order.buyer_id,
-        {
-            "type": "notification",
-            "data": {
-                "id": str(buyer_notification.id),
-                "type": str(buyer_notification.type),
-                "title": buyer_notification.title,
-                "message": buyer_notification.message,
-                "data": buyer_notification.data or {}
-            }
-        }
-    )
-
     seller_notification = await create_notification(
         db=db,
         user_id=order.seller_id,
@@ -426,19 +417,24 @@ async def confirm_release(
         description="Thanh toán escrow đã được giải phóng vào ví của bạn",
         related_id=str(order_id)
     )
-    await ws_manager.send_to_user(
-        order.seller_id,
-        {
-            "type": "notification",
-            "data": {
-                "id": str(seller_notification.id),
-                "type": str(seller_notification.type),
-                "title": seller_notification.title,
-                "message": seller_notification.message,
-                "data": seller_notification.data or {}
-            }
-        }
-    )
+
+    # WS invalidation events
+    await ws_manager.send_to_user(order.buyer_id, {
+        "type": "wallet_balance",
+        "user_id": str(order.buyer_id),
+    })
+    await ws_manager.send_to_user(order.seller_id, {
+        "type": "wallet_balance",
+        "user_id": str(order.seller_id),
+    })
+    await ws_manager.send_to_user(order.buyer_id, {
+        "type": "escrow_released",
+        "order_id": str(order_id),
+    })
+    await ws_manager.send_to_user(order.seller_id, {
+        "type": "escrow_released",
+        "order_id": str(order_id),
+    })
 
     return updated_escrow
 
@@ -511,19 +507,16 @@ async def open_dispute(
             description=f"Có tranh chấp về đơn hàng #{order_id}. Lý do: {data.reason[:50]}...",
             related_id=str(order_id)
         )
-        await ws_manager.send_to_user(
-            uuid.UUID(admin_id),
-            {
-                "type": "notification",
-                "data": {
-                    "id": str(notification.id),
-                    "type": str(notification.type),
-                    "title": notification.title,
-                    "message": notification.message,
-                    "data": notification.data or {}
-                }
-            }
-        )
+
+    # WS invalidation events
+    await ws_manager.send_to_user(order.buyer_id, {
+        "type": "escrow_disputed",
+        "order_id": str(order_id),
+    })
+    await ws_manager.send_to_user(order.seller_id, {
+        "type": "escrow_disputed",
+        "order_id": str(order_id),
+    })
 
     return updated_escrow
 
