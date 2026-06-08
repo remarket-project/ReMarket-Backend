@@ -5,6 +5,7 @@ and fund transfers to connected accounts.
 """
 import logging
 from decimal import Decimal
+from typing import Any
 
 import stripe
 
@@ -27,7 +28,7 @@ async def create_connected_account(
     first_name: str,
     last_name: str,
     country: str = "US",
-) -> dict:
+) -> dict[str, Any]:
     """Create a Stripe Connect Express account for a seller.
 
     Uses Express Dashboard to simplify KYC.
@@ -73,7 +74,7 @@ async def create_account_onboarding_link(
     account_id: str,
     refresh_url: str,
     return_url: str,
-) -> dict:
+) -> dict[str, Any]:
     """Create an Account Link for Stripe-hosted onboarding.
 
     Redirect the seller to the returned URL to complete KYC.
@@ -105,7 +106,7 @@ async def create_account_onboarding_link(
     return {"url": account_link.url}
 
 
-async def get_account_status(account_id: str) -> dict:
+async def get_account_status(account_id: str) -> dict[str, Any]:
     """Check the status of a connected account.
 
     Returns:
@@ -148,7 +149,7 @@ async def transfer_to_connected_account(
     destination_account_id: str,
     order_id: str,
     description: str = "",
-) -> dict:
+) -> dict[str, Any]:
     """Transfer funds from platform to seller's connected account.
 
     Called when escrow is released — money moves from the platform's
@@ -193,7 +194,7 @@ async def transfer_to_connected_account(
 async def reverse_transfer(
     transfer_id: str,
     amount_vnd: Decimal | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Reverse a transfer (when dispute results in refund).
 
     Args:
@@ -209,7 +210,7 @@ async def reverse_transfer(
     if amount_vnd is not None:
         reversal_params["amount"] = vnd_to_usd_cents(amount_vnd)
 
-    reversal = stripe.TransferReversal.create(
+    reversal = stripe.TransferReversal.create(  # type: ignore[attr-defined]
         transfer_id,
         **reversal_params,
     )

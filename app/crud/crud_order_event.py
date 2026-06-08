@@ -1,6 +1,7 @@
 """CRUD for OrderEvent model."""
 import uuid
 
+from sqlalchemy import asc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -23,5 +24,5 @@ async def create_order_event(
 
 
 async def get_order_events(db: AsyncSession, order_id: uuid.UUID):
-    result = await db.execute(select(OrderEvent).where(OrderEvent.order_id == order_id).order_by(OrderEvent.created_at.asc()))
+    result = await db.execute(select(OrderEvent).where(OrderEvent.order_id == order_id).order_by(asc(OrderEvent.created_at)))  # type: ignore[arg-type]
     return list(result.scalars().all())

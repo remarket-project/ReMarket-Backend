@@ -16,7 +16,7 @@ async def get_category_by_id(
     category_id: uuid.UUID
 ) -> Category | None:
     """Get category by ID."""
-    result = await db.execute(select(Category).where(Category.id == category_id))
+    result = await db.execute(select(Category).where(Category.id == category_id))  # type: ignore[arg-type]
     return result.scalar_one_or_none()
 
 
@@ -25,7 +25,7 @@ async def get_category_by_slug(
     slug: str
 ) -> Category | None:
     """Get category by slug."""
-    result = await db.execute(select(Category).where(Category.slug == slug))
+    result = await db.execute(select(Category).where(Category.slug == slug))  # type: ignore[arg-type]
     return result.scalar_one_or_none()
 
 

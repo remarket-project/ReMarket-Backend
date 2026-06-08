@@ -5,14 +5,11 @@ and checking account status.
 """
 import logging
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.api.deps import CurrentUser, SessionDep
 from app.core.config import settings
-from app.crud import crud_wallet
-from app.models.enums import TransactionType
-from app.models.wallet import WalletTransaction
 from app.services import stripe_connect
 
 logger = logging.getLogger(__name__)

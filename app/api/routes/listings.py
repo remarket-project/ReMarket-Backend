@@ -292,9 +292,9 @@ async def create_listing(
             seller_id=str(current_user.id),
             category_id=str(data.category_id)
         )
-    except IntegrityError:
+    except IntegrityError as err:
         await db.rollback()
-        raise HTTPException(status_code=400, detail="ID danh mục không hợp lệ")
+        raise HTTPException(status_code=400, detail="ID danh mục không hợp lệ") from err
     return new_listing
 
 
@@ -432,7 +432,7 @@ async def upload_listing_image(
             import traceback
             traceback.print_exc()
             raise HTTPException(
-                status_code=500, detail=f"Error uploading to MinIO: {str(e)}")
+                status_code=500, detail=f"Error uploading to MinIO: {str(e)}") from e
     else:
         # Use local filesystem
         file_path = os.path.abspath(

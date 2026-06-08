@@ -50,11 +50,11 @@ class Wallet(SQLModel, table=True):
         description="Balance locked in escrow"
     )
 
-    created_at: datetime = Field(
+    created_at: datetime = Field(  # type: ignore[call-overload]
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),
     )
-    updated_at: datetime = Field(
+    updated_at: datetime = Field(  # type: ignore[call-overload]
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),
     )
@@ -130,7 +130,7 @@ class WalletTransaction(SQLModel, table=True):
         description="Balance after this transaction"
     )
 
-    created_at: datetime = Field(
+    created_at: datetime = Field(  # type: ignore[call-overload]
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),
         index=True

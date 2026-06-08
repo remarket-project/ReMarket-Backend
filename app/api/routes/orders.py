@@ -7,19 +7,18 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.api.deps import CurrentUser, SessionDep
+from app.core.config import settings
 from app.core.websocket_manager import ws_manager
 from app.crud import (
     crud_escrow,
     crud_listing,
     crud_notification,
-    crud_offer,
     crud_order,
     crud_order_event,
     crud_user,
     crud_wallet,
 )
-from app.models.enums import EscrowStatus, ListingStatus, NotificationType, OfferStatus, OrderStatus, PaymentMethod
-from app.models.offer import Offer
+from app.models.enums import EscrowStatus, ListingStatus, NotificationType, OrderStatus, PaymentMethod, UserRole
 from app.schemas.order import OrderDirectCreate, OrderRead, OrderStatusUpdate
 from app.services import send_order_completed_email, send_order_created_email
 
@@ -58,7 +57,7 @@ async def create_direct_order(
     try:
         order, rejected_offers = await crud_order.create_direct_order(db, current_user.id, listing)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     # Save shipping address if provided
     if data.shipping_address:
@@ -102,12 +101,12 @@ async def create_direct_order(
                     description=f"Escrow for order {order.id}",
                 )
                 await crud_escrow.fund_escrow(db, escrow.id)
-            except ValueError:
+            except ValueError as wallet_err:
                 # BUG-08 FIX: Báo lỗi rõ ràng thay vì silent pass
                 raise HTTPException(
                     status_code=400,
                     detail="Số dư ví không đủ. Vui lòng nạp thêm tiền hoặc chọn COD."
-                )
+                ) from wallet_err
 
     # Gửi email
     buyer = await crud_user.get_user_by_id(db, current_user.id)
@@ -271,6 +270,40 @@ async def complete_order(
     return updated_order
 
 
+@router.post("/{order_id}/accept", response_model=OrderRead)
+async def accept_order(
+    current_user: CurrentUser,
+    db: SessionDep,
+    order_id: uuid.UUID,
+):
+    """Buyer xác nhận đã nhận hàng → complete + release escrow ngay."""
+    order = await crud_order.get_order_by_id(db, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Đơn hàng không tìm thấy")
+
+    if order.buyer_id != current_user.id:
+        raise HTTPException(
+            status_code=403, detail="Chỉ người mua mới có thể xác nhận nhận hàng")
+
+    if order.status != OrderStatus.DELIVERED:
+        raise HTTPException(
+            status_code=400, detail=f"Không thể xác nhận ở trạng thái {order.status}")
+
+    updated_order = await crud_order.complete_order(db, order)
+
+    # WS events
+    await ws_manager.send_to_user(order.buyer_id, {
+        "type": "order_status_updated",
+        "order_id": str(order.id),
+    })
+    await ws_manager.send_to_user(order.seller_id, {
+        "type": "order_status_updated",
+        "order_id": str(order.id),
+    })
+
+    return updated_order
+
+
 @router.post("/{order_id}/cancel", response_model=OrderRead)
 async def cancel_order(
     current_user: CurrentUser,
@@ -287,7 +320,7 @@ async def cancel_order(
 
     if order.status != OrderStatus.PENDING:
         raise HTTPException(
-            status_code=400, detail=f"Không thể hủy đơn hàng ở trạng thái {order.status}")
+            status_code=400, detail="Chỉ có thể hủy đơn hàng ở trạng thái PENDING")
 
     updated_order = await crud_order.cancel_order(db, order)
 
@@ -326,17 +359,21 @@ async def update_order_status(
     if not order:
         raise HTTPException(status_code=404, detail="Đơn hàng không tìm thấy")
 
-    # Only seller can update status
-    if order.seller_id != current_user.id:
+    # Only admin can update status
+    if current_user.role != UserRole.ADMIN:
         raise HTTPException(
-            status_code=403, detail="Chỉ người bán có thể cập nhật trạng thái")
+            status_code=403, detail="Chỉ admin có thể cập nhật trạng thái đơn hàng")
 
-    # Validate status transitions
+    # Validate status transitions (admin-only full transitions)
     valid_transitions = {
-        OrderStatus.PENDING: [OrderStatus.CONFIRMED],
-        OrderStatus.CONFIRMED: [OrderStatus.SHIPPING],
-        OrderStatus.SHIPPING: [OrderStatus.DELIVERED],
+        OrderStatus.PENDING: [OrderStatus.SHIPPING],
+        OrderStatus.SHIPPING: [OrderStatus.DELIVERED, OrderStatus.RETURNING],
+        OrderStatus.RETURNING: [OrderStatus.RETURNED],
+        OrderStatus.RETURNED: [],
         OrderStatus.DELIVERED: [OrderStatus.COMPLETED],
+        OrderStatus.DISPUTED: [OrderStatus.COMPLETED, OrderStatus.RETURNED],
+        OrderStatus.COMPLETED: [],
+        OrderStatus.CANCELLED: [],
     }
 
     if order.status not in valid_transitions:
@@ -353,16 +390,25 @@ async def update_order_status(
 
     # Update order status
     order.status = data.status
+    order.updated_at = datetime.utcnow()
     db.add(order)
+
+    # If DELIVERED, set auto-complete timer
+    if data.status == OrderStatus.DELIVERED:
+        from datetime import timedelta
+        order.delivered_at_record = datetime.utcnow()
+        order.auto_complete_at = order.delivered_at_record + timedelta(hours=settings.ORDER_AUTO_COMPLETE_HOURS)
+
     await db.commit()
     await db.refresh(order)
 
-    # Send notification to buyer
+    # Send notification to buyer/seller
     status_messages = {
-        OrderStatus.CONFIRMED: ("Đơn hàng đã xác nhận", "Người bán đã xác nhận đơn hàng của bạn"),
         OrderStatus.SHIPPING: ("Đang vận chuyển", "Đơn hàng đang được vận chuyển"),
         OrderStatus.DELIVERED: ("Đã giao hàng", "Đơn hàng đã được giao hàng"),
         OrderStatus.COMPLETED: ("Đơn hàng hoàn tất", "Đơn hàng đã hoàn tất thành công"),
+        OrderStatus.RETURNING: ("Đang hoàn trả", "Đơn hàng đang được hoàn trả"),
+        OrderStatus.RETURNED: ("Đã hoàn trả", "Đơn hàng đã hoàn trả thành công"),
     }
 
     if data.status in status_messages:

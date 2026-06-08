@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, String
+from sqlalchemy import Column, Index, String, text
 from sqlmodel import Field, Relationship, SQLModel
 
 from .enums import OfferStatus
@@ -22,6 +22,16 @@ class Offer(SQLModel, table=True):
     """Offer/negotiation database model."""
 
     __tablename__ = "offers"
+
+    __table_args__ = (
+        Index(
+            "uq_offer_active_per_buyer_listing",
+            "buyer_id",
+            "listing_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'countered')"),
+        ),
+    )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     listing_id: uuid.UUID = Field(

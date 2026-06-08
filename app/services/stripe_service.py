@@ -174,7 +174,7 @@ async def handle_webhook_event(
     """Route a Stripe webhook event to its handler.
     """
     event_type = event.type
-    data = event.data.object
+    data: Any = event.data.object
 
     handlers = {
         "payment_intent.succeeded": _handle_payment_succeeded,
@@ -203,19 +203,18 @@ async def _handle_payment_succeeded(
     db: Any,
 ) -> None:
     """Handle payment_intent.succeeded — credit the wallet."""
-    metadata = payment_intent.metadata.to_dict() if payment_intent.metadata else {}
-    wallet_id = metadata.get("wallet_id")
+    metadata = payment_intent.metadata
+    wallet_id = metadata.get("wallet_id") if isinstance(metadata, dict) else None
     if not wallet_id:
         logger.error("No wallet_id in PaymentIntent %s metadata", payment_intent.id)
         return
 
     amount_vnd = usd_cents_to_vnd(payment_intent.amount)
 
+    cond1: Any = WalletTransaction.payment_gateway_ref == payment_intent.id
+    cond2: Any = WalletTransaction.status == "pending"
     tx_result = await db.execute(
-        select(WalletTransaction).where(
-            WalletTransaction.payment_gateway_ref == payment_intent.id,
-            WalletTransaction.status == "pending",
-        )
+        select(WalletTransaction).where(cond1, cond2)
     )
     tx = tx_result.scalar_one_or_none()
     if not tx:
@@ -224,7 +223,7 @@ async def _handle_payment_succeeded(
 
     wallet_result = await db.execute(
         select(Wallet)
-        .where(Wallet.id == wallet_id)
+        .where(Wallet.id == wallet_id)  # type: ignore[arg-type]
         .with_for_update()
     )
     wallet = wallet_result.scalar_one_or_none()
@@ -244,6 +243,12 @@ async def _handle_payment_succeeded(
     db.add(tx)
     await db.commit()
 
+    from app.core.websocket_manager import ws_manager
+    await ws_manager.send_to_user(wallet.user_id, {
+        "type": "wallet_balance",
+        "user_id": str(wallet.user_id),
+    })
+
     logger.info(
         "Deposit completed: wallet %s +%s VND (PI: %s)",
         wallet_id, amount_vnd, payment_intent.id,
@@ -255,11 +260,8 @@ async def _handle_payment_failed(
     db: Any,
 ) -> None:
     """Handle payment_intent.payment_failed — mark transaction failed."""
-    tx_result = await db.execute(
-        select(WalletTransaction).where(
-            WalletTransaction.payment_gateway_ref == payment_intent.id,
-        )
-    )
+    cond: Any = WalletTransaction.payment_gateway_ref == payment_intent.id
+    tx_result = await db.execute(select(WalletTransaction).where(cond))
     tx = tx_result.scalar_one_or_none()
     if tx:
         tx.status = "failed"
@@ -274,18 +276,12 @@ async def _handle_payout_paid(
     db: Any,
 ) -> None:
     """Handle payout.paid — mark withdrawal as completed."""
-    tx_result = await db.execute(
-        select(WalletTransaction).where(
-            WalletTransaction.stripe_payout_id == payout.id,
-        )
-    )
+    cond1: Any = WalletTransaction.stripe_payout_id == payout.id
+    tx_result = await db.execute(select(WalletTransaction).where(cond1))
     tx = tx_result.scalar_one_or_none()
     if not tx:
-        tx_result = await db.execute(
-            select(WalletTransaction).where(
-                WalletTransaction.payment_gateway_ref == payout.id,
-            )
-        )
+        cond2: Any = WalletTransaction.payment_gateway_ref == payout.id
+        tx_result = await db.execute(select(WalletTransaction).where(cond2))
         tx = tx_result.scalar_one_or_none()
     if tx and tx.status == "pending":
         tx.status = "completed"
@@ -300,18 +296,12 @@ async def _handle_payout_failed(
     db: Any,
 ) -> None:
     """Handle payout.failed — refund the wallet."""
-    tx_result = await db.execute(
-        select(WalletTransaction).where(
-            WalletTransaction.stripe_payout_id == payout.id,
-        )
-    )
+    cond1: Any = WalletTransaction.stripe_payout_id == payout.id
+    tx_result = await db.execute(select(WalletTransaction).where(cond1))
     tx = tx_result.scalar_one_or_none()
     if not tx:
-        tx_result = await db.execute(
-            select(WalletTransaction).where(
-                WalletTransaction.payment_gateway_ref == payout.id,
-            )
-        )
+        cond2: Any = WalletTransaction.payment_gateway_ref == payout.id
+        tx_result = await db.execute(select(WalletTransaction).where(cond2))
         tx = tx_result.scalar_one_or_none()
     if not tx or tx.status != "pending":
         return
@@ -320,7 +310,7 @@ async def _handle_payout_failed(
 
     wallet_result = await db.execute(
         select(Wallet)
-        .where(Wallet.id == tx.wallet_id)
+        .where(Wallet.id == tx.wallet_id)  # type: ignore[arg-type]
         .with_for_update()
     )
     wallet = wallet_result.scalar_one_or_none()
@@ -347,5 +337,11 @@ async def _handle_payout_failed(
     db.add(tx)
     db.add(refund_tx)
     await db.commit()
+
+    from app.core.websocket_manager import ws_manager
+    await ws_manager.send_to_user(wallet.user_id, {
+        "type": "wallet_balance",
+        "user_id": str(wallet.user_id),
+    })
 
     logger.info("Payout failed, refunded: tx %s (payout %s)", tx.id, payout.id)

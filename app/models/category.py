@@ -57,7 +57,7 @@ class Category(CategoryBase, table=True):
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
 
-    created_at: datetime = Field(
+    created_at: datetime = Field(  # type: ignore[call-overload]
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),
     )

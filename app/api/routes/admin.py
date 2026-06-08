@@ -1,16 +1,16 @@
 import logging
 import uuid
 from datetime import datetime, timezone
-from decimal import Decimal
 
 from fastapi import APIRouter, Body, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, select
 
-logger = logging.getLogger(__name__)
-
+from app.core.config import settings
+from app.core.websocket_manager import ws_manager
 from app.api.deps import CurrentAdmin, SessionDep
 from app.crud import (
     crud_admin_audit,
+    crud_dispute,
     crud_escrow,
     crud_notification,
     crud_order,
@@ -29,12 +29,16 @@ from app.models.listing import Listing
 from app.models.order import Order
 from app.models.user import User
 from app.models.wallet import WalletTransaction
+from app.schemas.dispute import DisputeRead
 from app.schemas.escrow import ResolveEscrowRequest
 from app.schemas.listing import ListingRead
 from app.schemas.user import UserMe, UserStatusUpdate
-from app.services import stripe_connect, stripe_service
+from app.services import stripe_connect
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
 
 
 async def _log_admin_action(
@@ -64,11 +68,13 @@ async def get_dashboard_stats(
     total_users = (await db.execute(select(func.count()).select_from(User))).scalar_one()
     total_listings = (await db.execute(select(func.count()).select_from(Listing))).scalar_one()
     total_orders = (await db.execute(select(func.count()).select_from(Order))).scalar_one()
-    disputed_escrows = (
+    from app.models.dispute import Dispute
+
+    contested_disputes = (
         await db.execute(
             select(func.count())
-            .select_from(Escrow)
-            .where(Escrow.status == EscrowStatus.DISPUTED.value)
+            .select_from(Dispute)
+            .where(Dispute.status == "open")  # type: ignore[arg-type]
         )
     ).scalar_one()
 
@@ -76,7 +82,7 @@ async def get_dashboard_stats(
         "total_users": total_users,
         "total_listings": total_listings,
         "total_orders": total_orders,
-        "disputed_escrows": disputed_escrows,
+        "disputed_escrows": contested_disputes,
     }
 
 
@@ -227,117 +233,296 @@ async def resolve_escrow_dispute(
     admin_user: CurrentAdmin,
     db: SessionDep,
 ):
-    """Admin: resolve disputed escrow by releasing to seller or refunding buyer.
+    """Admin: resolve disputed escrow via the new Dispute system."""
+    dispute = await crud_dispute.get_dispute_by_order(db, order_id)
+    if not dispute:
+        raise HTTPException(status_code=404, detail="No dispute found for this order")
+    if dispute.status != "open":
+        raise HTTPException(status_code=400, detail=f"Dispute is already {dispute.status}")
 
-    If releasing to seller and seller has a Stripe account, a Stripe Transfer
-    is also created. If refunding and escrow was already released, a Stripe
-    Transfer reversal is attempted.
-    """
-    order = await crud_order.get_order_by_id(db, order_id)
-    if not order:
-        raise HTTPException(status_code=404, detail="Đơn hàng không tìm thấy")
-
-    escrow = await crud_escrow.get_escrow_by_order_id(db, order_id)
-    if not escrow:
-        raise HTTPException(status_code=404, detail="Escrow không tìm thấy")
-
-    if payload.result == "release":
-        await crud_wallet.transfer_locked_to_user(
-            db=db,
-            from_wallet_id=escrow.buyer_wallet_id,
-            to_wallet_id=escrow.seller_wallet_id,
-            amount=escrow.amount,
-            order_id=order_id,
-            description=f"Admin release escrow for order {order_id}",
-        )
-
-        seller = await get_user_by_id(db, order.seller_id)
-        if seller and seller.stripe_account_id and seller.stripe_onboarding_complete:
-            try:
-                await stripe_connect.transfer_to_connected_account(
-                    amount_vnd=escrow.amount,
-                    destination_account_id=seller.stripe_account_id,
-                    order_id=str(order_id),
-                    description=f"Escrow release for order {order_id}",
-                )
-            except Exception as e:
-                logger.warning("Stripe transfer failed for order %s: %s", order_id, e)
-    else:
-        await crud_wallet.unlock_balance(
-            db=db,
-            wallet_id=escrow.buyer_wallet_id,
-            amount=escrow.amount,
-            order_id=order_id,
-            description=f"Admin refund escrow for order {order_id}",
-        )
-
-        seller_tx = await db.execute(
-            select(WalletTransaction)
-            .where(
-                WalletTransaction.order_id == order_id,
-                WalletTransaction.stripe_transfer_id.isnot(None),
-            )
-            .order_by(WalletTransaction.created_at.desc())
-        )
-        seller_tx_row = seller_tx.scalar_one_or_none()
-        if seller_tx_row and seller_tx_row.stripe_transfer_id:
-            try:
-                await stripe_connect.reverse_transfer(
-                    transfer_id=seller_tx_row.stripe_transfer_id,
-                    amount_vnd=escrow.amount,
-                )
-            except Exception as e:
-                logger.warning("Stripe transfer reversal failed: %s", e)
-
-    updated_escrow = await crud_escrow.resolve_dispute(
+    await crud_dispute.resolve_dispute(
         db=db,
-        escrow_id=escrow.id,
-        admin_id=admin_user.id,
+        dispute_id=dispute.id,
+        resolved_by=admin_user.id,
         resolution=payload.result,
+        admin_notes=payload.note,
     )
 
+    order = await crud_order.get_order_by_id(db, order_id)
+
     if payload.result == "release":
-        await crud_order.update_order_status(db, order_id, OrderStatus.COMPLETED)
         buyer_title = "Tranh chấp được xử lý"
         buyer_message = "Admin đã xử lý tranh chấp: tiền được giải phóng cho người bán."
-        seller_title = "Nhận thanh toán escrow"
+        seller_title = "Nhận thanh toán"
         seller_message = "Admin đã xử lý tranh chấp và giải phóng thanh toán cho bạn."
     else:
-        await crud_order.update_order_status(db, order_id, OrderStatus.CANCELLED)
-        buyer_title = "Hoàn tiền escrow thành công"
+        buyer_title = "Hoàn tiền thành công"
         buyer_message = "Admin đã xử lý tranh chấp và hoàn tiền vào ví của bạn."
         seller_title = "Tranh chấp được xử lý"
         seller_message = "Admin đã xử lý tranh chấp: đơn hàng được hoàn tiền cho người mua."
 
-    await crud_notification.create_notification(
-        db=db,
-        user_id=order.buyer_id,
-        type=NotificationType.ORDER_CANCELLED if payload.result == "refund" else NotificationType.ORDER_COMPLETED,
-        title=buyer_title,
-        message=buyer_message,
-        data={"order_id": str(order_id), "escrow_result": payload.result, "note": payload.note or ""},
-    )
-    await crud_notification.create_notification(
-        db=db,
-        user_id=order.seller_id,
-        type=NotificationType.ORDER_COMPLETED if payload.result == "release" else NotificationType.ORDER_CANCELLED,
-        title=seller_title,
-        message=seller_message,
-        data={"order_id": str(order_id), "escrow_result": payload.result, "note": payload.note or ""},
-    )
+    if order:
+        await crud_notification.create_notification(
+            db=db, user_id=order.buyer_id,
+            type=NotificationType.DISPUTE_RESOLVED,
+            title=buyer_title, message=buyer_message,
+            data={"order_id": str(order_id), "result": payload.result, "note": payload.note or ""},
+        )
+        await crud_notification.create_notification(
+            db=db, user_id=order.seller_id,
+            type=NotificationType.DISPUTE_RESOLVED,
+            title=seller_title, message=seller_message,
+            data={"order_id": str(order_id), "result": payload.result, "note": payload.note or ""},
+        )
 
     await _log_admin_action(
-        db,
-        admin_user,
-        action=f"escrow_resolved_{payload.result}",
-        target_type="escrow",
-        target_id=str(order_id),
+        db, admin_user,
+        action=f"dispute_resolved_{payload.result}",
+        target_type="dispute",
+        target_id=str(dispute.id),
         note=payload.note,
     )
 
     return {
-        "message": "Escrow dispute resolved",
+        "message": "Dispute resolved",
+        "dispute_id": str(dispute.id),
         "order_id": str(order_id),
         "result": payload.result,
-        "escrow_status": updated_escrow.status if updated_escrow else None,
     }
+
+
+# ============================================================================
+# Admin Order Management
+# ============================================================================
+
+@router.get("/orders")
+async def admin_list_orders(
+    db: SessionDep,
+    admin_user: CurrentAdmin,
+    status: str | None = None,
+    skip: int = 0,
+    limit: int = 20,
+):
+    """Admin: list all orders, filter by status."""
+    if status:
+        result = await db.execute(
+            select(Order).where(Order.status == status)  # type: ignore[arg-type]
+            .order_by(desc(Order.created_at)).offset(skip).limit(limit)
+        )
+        count_result = await db.execute(
+            select(func.count()).select_from(Order)
+            .where(Order.status == status)  # type: ignore[arg-type]
+        )
+    else:
+        result = await db.execute(
+            select(Order).order_by(desc(Order.created_at)).offset(skip).limit(limit)
+        )
+        count_result = await db.execute(select(func.count()).select_from(Order))
+
+    items = list(result.scalars().all())
+    total = count_result.scalar_one()
+
+    return {"items": items, "total": total}
+
+
+@router.post("/orders/{order_id}/ship")
+async def admin_ship_order(
+    order_id: uuid.UUID,
+    admin_user: CurrentAdmin,
+    db: SessionDep,
+):
+    """Admin: PENDING → SHIPPING"""
+    order = await crud_order.get_order_by_id(db, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.status != OrderStatus.PENDING:
+        raise HTTPException(status_code=400, detail=f"Cannot ship order with status {order.status}")
+
+    updated = await crud_order.update_order_status(db, order_id, OrderStatus.SHIPPING)
+    await _log_admin_action(db, admin_user, "order_shipped", "order", str(order_id))
+
+    await ws_manager.send_to_user(order.buyer_id, {
+        "type": "order_status_updated", "order_id": str(order_id),
+    })
+    await ws_manager.send_to_user(order.seller_id, {
+        "type": "order_status_updated", "order_id": str(order_id),
+    })
+
+    return updated
+
+
+@router.post("/orders/{order_id}/deliver")
+async def admin_deliver_order(
+    order_id: uuid.UUID,
+    admin_user: CurrentAdmin,
+    db: SessionDep,
+):
+    """Admin: SHIPPING → DELIVERED (set auto-complete timer)"""
+    from datetime import timedelta
+
+    order = await crud_order.get_order_by_id(db, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.status != OrderStatus.SHIPPING:
+        raise HTTPException(status_code=400, detail=f"Cannot deliver order with status {order.status}")
+
+    order.status = OrderStatus.DELIVERED
+    order.delivered_at_record = datetime.now(timezone.utc)
+    order.auto_complete_at = order.delivered_at_record + timedelta(hours=settings.ORDER_AUTO_COMPLETE_HOURS)
+    order.updated_at = datetime.now(timezone.utc)
+    db.add(order)
+    await db.commit()
+    await db.refresh(order)
+
+    await _log_admin_action(db, admin_user, "order_delivered", "order", str(order_id))
+
+    await crud_notification.create_notification(
+        db=db, user_id=order.buyer_id,
+        type=NotificationType.SHIPPING_DELIVERED,
+        title="Đã giao hàng",
+        message=f"Đơn hàng #{str(order_id)[:8]} đã được giao.",
+    )
+    await ws_manager.send_to_user(order.buyer_id, {
+        "type": "order_status_updated", "order_id": str(order_id),
+    })
+    await ws_manager.send_to_user(order.seller_id, {
+        "type": "order_status_updated", "order_id": str(order_id),
+    })
+
+    return order
+
+
+@router.post("/orders/{order_id}/return")
+async def admin_return_order(
+    order_id: uuid.UUID,
+    admin_user: CurrentAdmin,
+    db: SessionDep,
+):
+    """Admin: SHIPPING → RETURNING"""
+    order = await crud_order.get_order_by_id(db, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.status != OrderStatus.SHIPPING:
+        raise HTTPException(status_code=400, detail=f"Cannot return order with status {order.status}")
+
+    updated = await crud_order.update_order_status(db, order_id, OrderStatus.RETURNING)
+    await _log_admin_action(db, admin_user, "order_return_initiated", "order", str(order_id))
+
+    await ws_manager.send_to_user(order.buyer_id, {
+        "type": "order_status_updated", "order_id": str(order_id),
+    })
+    await ws_manager.send_to_user(order.seller_id, {
+        "type": "order_status_updated", "order_id": str(order_id),
+    })
+
+    return updated
+
+
+@router.post("/orders/{order_id}/returned")
+async def admin_returned_order(
+    order_id: uuid.UUID,
+    admin_user: CurrentAdmin,
+    db: SessionDep,
+):
+    """Admin: RETURNING → RETURNED (auto refund escrow)"""
+    order = await crud_order.get_order_by_id(db, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.status != OrderStatus.RETURNING:
+        raise HTTPException(status_code=400, detail=f"Cannot confirm return with status {order.status}")
+
+    updated = await crud_order.refund_order(db, order)
+    await _log_admin_action(db, admin_user, "order_returned", "order", str(order_id))
+
+    await crud_notification.create_notification(
+        db=db, user_id=order.buyer_id,
+        type=NotificationType.RETURN_CONFIRMED,
+        title="Hoàn trả thành công",
+        message=f"Đơn hàng #{str(order_id)[:8]} đã được hoàn trả. Tiền đã hoàn lại.",
+    )
+    await ws_manager.send_to_user(order.buyer_id, {
+        "type": "order_status_updated", "order_id": str(order_id),
+    })
+    await ws_manager.send_to_user(order.seller_id, {
+        "type": "order_status_updated", "order_id": str(order_id),
+    })
+
+    return updated
+
+
+@router.post("/orders/{order_id}/force-complete")
+async def admin_force_complete(
+    order_id: uuid.UUID,
+    admin_user: CurrentAdmin,
+    db: SessionDep,
+):
+    """Admin: force COMPLETED (any status) + release escrow."""
+    order = await crud_order.get_order_by_id(db, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    updated = await crud_order.complete_order(db, order)
+    await _log_admin_action(db, admin_user, "order_force_completed", "order", str(order_id))
+
+    await ws_manager.send_to_user(order.buyer_id, {
+        "type": "order_status_updated", "order_id": str(order_id),
+    })
+    await ws_manager.send_to_user(order.seller_id, {
+        "type": "order_status_updated", "order_id": str(order_id),
+    })
+
+    return updated
+
+
+@router.post("/orders/{order_id}/force-cancel")
+async def admin_force_cancel(
+    order_id: uuid.UUID,
+    admin_user: CurrentAdmin,
+    db: SessionDep,
+):
+    """Admin: force CANCELLED + refund escrow."""
+    order = await crud_order.get_order_by_id(db, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    updated = await crud_order.cancel_order(db, order)
+    await _log_admin_action(db, admin_user, "order_force_cancelled", "order", str(order_id))
+
+    await ws_manager.send_to_user(order.buyer_id, {
+        "type": "order_cancelled", "order_id": str(order_id),
+    })
+    await ws_manager.send_to_user(order.seller_id, {
+        "type": "order_cancelled", "order_id": str(order_id),
+    })
+
+    return updated
+
+
+# ============================================================================
+# Admin Dispute Management
+# ============================================================================
+
+@router.get("/disputes")
+async def admin_list_disputes(
+    db: SessionDep,
+    admin_user: CurrentAdmin,
+    status: str | None = "open",
+    skip: int = 0,
+    limit: int = 20,
+):
+    """Admin: list disputes, filter by status."""
+    disputes, total = await crud_dispute.list_disputes(db, status=status, skip=skip, limit=limit)
+    return {"items": disputes, "total": total}
+
+
+@router.get("/disputes/{dispute_id}", response_model=DisputeRead)
+async def admin_get_dispute(
+    dispute_id: uuid.UUID,
+    admin_user: CurrentAdmin,
+    db: SessionDep,
+):
+    """Admin: get dispute detail."""
+    dispute = await crud_dispute.get_dispute_by_id(db, dispute_id)
+    if not dispute:
+        raise HTTPException(status_code=404, detail="Dispute not found")
+    return dispute

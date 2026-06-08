@@ -6,7 +6,7 @@ Handles listing creation, retrieval, updates, and searches with image handling.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, func, or_, update
+from sqlalchemy import asc, delete, desc, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
@@ -50,7 +50,7 @@ async def create_listing(
 async def get_listing(db: AsyncSession, listing_id: str) -> Listing | None:
     """Get listing by ID."""
     result = await db.execute(
-        select(Listing).options(joinedload(Listing.seller)).where(Listing.id == _to_uuid(listing_id))
+        select(Listing).options(joinedload(Listing.seller)).where(Listing.id == _to_uuid(listing_id))  # type: ignore[arg-type]
     )
     return result.scalar_one_or_none()
 
@@ -62,7 +62,7 @@ async def get_listing_images(
     """Get all images for a listing."""
     result = await db.execute(
         select(ListingImage).where(
-            ListingImage.listing_id == _to_uuid(listing_id))
+            ListingImage.listing_id == _to_uuid(listing_id))  # type: ignore[arg-type]
     )
     return list(result.scalars().all())
 
@@ -80,8 +80,8 @@ async def get_images_for_listings(
 
     result = await db.execute(
         select(ListingImage)
-        .where(ListingImage.listing_id.in_(listing_ids))
-        .order_by(ListingImage.listing_id, ListingImage.is_primary.desc())
+        .where(ListingImage.listing_id.in_(listing_ids))  # type: ignore[attr-defined]
+        .order_by(ListingImage.listing_id, desc(ListingImage.is_primary))
     )
     images = result.scalars().all()
 
@@ -106,7 +106,7 @@ async def add_listing_image(
     if is_primary:
         await db.execute(
             update(ListingImage)
-            .where(ListingImage.listing_id == _to_uuid(listing_id))
+            .where(ListingImage.listing_id == _to_uuid(listing_id))  # type: ignore[arg-type]
             .values(is_primary=False)
         )
 
@@ -156,7 +156,7 @@ async def update_listing(
 
     await db.execute(
         update(Listing)
-        .where(Listing.id == _to_uuid(listing_id))
+        .where(Listing.id == _to_uuid(listing_id))  # type: ignore[arg-type]
         .values(**update_data)
     )
     await db.commit()
@@ -171,7 +171,7 @@ async def update_listing_status(
     """Update listing status."""
     await db.execute(
         update(Listing)
-        .where(Listing.id == _to_uuid(listing_id))
+        .where(Listing.id == _to_uuid(listing_id))  # type: ignore[arg-type]
         .values(status=status, updated_at=datetime.now(timezone.utc).replace(tzinfo=None))
     )
     await db.commit()
@@ -182,7 +182,7 @@ async def soft_delete_listing(db: AsyncSession, listing_id: str) -> None:
     """Soft delete a listing by marking as HIDDEN."""
     await db.execute(
         update(Listing)
-        .where(Listing.id == _to_uuid(listing_id))
+        .where(Listing.id == _to_uuid(listing_id))  # type: ignore[arg-type]
         .values(
             status=ListingStatus.HIDDEN,
             updated_at=datetime.now(timezone.utc).replace(tzinfo=None)
@@ -219,7 +219,7 @@ async def search_listings(
     conditions = []
 
     if status:
-        conditions.append(Listing.status == status)
+        conditions.append(Listing.status == status)  # type: ignore[arg-type]
     if featured_only:
         conditions.append(Listing.is_featured.is_(True))
     if keyword:
@@ -232,13 +232,13 @@ async def search_listings(
             )
         )
     if category_id:
-        conditions.append(Listing.category_id == _to_uuid(category_id))
+        conditions.append(Listing.category_id == _to_uuid(category_id))  # type: ignore[arg-type]
     if seller_id:
-        conditions.append(Listing.seller_id == _to_uuid(seller_id))
+        conditions.append(Listing.seller_id == _to_uuid(seller_id))  # type: ignore[arg-type]
     if min_price is not None:
-        conditions.append(Listing.price >= min_price)
+        conditions.append(Listing.price >= min_price)  # type: ignore[arg-type]
     if max_price is not None:
-        conditions.append(Listing.price <= max_price)
+        conditions.append(Listing.price <= max_price)  # type: ignore[arg-type]
 
     if conditions:
         for condition in conditions:
@@ -251,12 +251,12 @@ async def search_listings(
 
     # Get paginated results
     order_map = {
-        "newest": [Listing.created_at.desc()],
-        "oldest": [Listing.created_at.asc()],
-        "price_asc": [Listing.price.asc(), Listing.created_at.desc()],
-        "price_desc": [Listing.price.desc(), Listing.created_at.desc()],
-        "popular": [Listing.view_count.desc(), Listing.save_count.desc(), Listing.created_at.desc()],
-        "featured": [Listing.is_featured.desc(), Listing.published_at.desc(), Listing.created_at.desc()],
+        "newest": [desc(Listing.created_at)],
+        "oldest": [asc(Listing.created_at)],
+        "price_asc": [asc(Listing.price), desc(Listing.created_at)],
+        "price_desc": [desc(Listing.price), desc(Listing.created_at)],
+        "popular": [desc(Listing.view_count), desc(Listing.save_count), desc(Listing.created_at)],
+        "featured": [desc(Listing.is_featured), desc(Listing.published_at), desc(Listing.created_at)],
     }
     query = query.order_by(
         *order_map.get(sort_by, order_map["newest"])).offset(skip).limit(limit)
@@ -289,9 +289,9 @@ async def get_related_listings(
 ) -> tuple[list[Listing], int]:
     count_result = await db.execute(
         select(func.count()).select_from(Listing).where(
-            Listing.status == ListingStatus.ACTIVE,
-            Listing.id != listing.id,
-            Listing.category_id == listing.category_id,
+            Listing.status == ListingStatus.ACTIVE,  # type: ignore[arg-type]
+            Listing.id != listing.id,  # type: ignore[arg-type]
+            Listing.category_id == listing.category_id,  # type: ignore[arg-type]
         )
     )
     total = count_result.scalar_one()
@@ -300,14 +300,14 @@ async def get_related_listings(
         select(Listing)
         .options(joinedload(Listing.seller))
         .where(
-            Listing.status == ListingStatus.ACTIVE,
-            Listing.id != listing.id,
-            Listing.category_id == listing.category_id,
+            Listing.status == ListingStatus.ACTIVE,  # type: ignore[arg-type]
+            Listing.id != listing.id,  # type: ignore[arg-type]
+            Listing.category_id == listing.category_id,  # type: ignore[arg-type]
         )
         .order_by(
-            Listing.is_featured.desc(),
-            Listing.view_count.desc(),
-            Listing.created_at.desc(),
+            desc(Listing.is_featured),
+            desc(Listing.view_count),
+            desc(Listing.created_at),
         )
         .offset(skip)
         .limit(limit)
@@ -323,10 +323,10 @@ async def get_listing_suggestions(
     result = await db.execute(
         select(Listing.title)
         .where(
-            Listing.status == ListingStatus.ACTIVE,
+            Listing.status == ListingStatus.ACTIVE,  # type: ignore[arg-type]
             Listing.title.ilike(f"%{keyword}%"),
         )
-        .order_by(Listing.view_count.desc(), Listing.created_at.desc())
+        .order_by(desc(Listing.view_count), desc(Listing.created_at))
         .limit(limit)
     )
     return [row[0] for row in result.all() if row[0]]
@@ -344,17 +344,17 @@ async def get_price_band_summary(
         {"label": "Trên 10 triệu", "min_price": 10_000_000, "max_price": None},
     ]
 
-    base_filters = [Listing.status == ListingStatus.ACTIVE]
+    base_filters = [Listing.status == ListingStatus.ACTIVE]  # type: ignore[arg-type]
     if category_id:
-        base_filters.append(Listing.category_id == _to_uuid(category_id))
+        base_filters.append(Listing.category_id == _to_uuid(category_id))  # type: ignore[arg-type]
 
     summary: list[dict[str, object]] = []
     for band in bands:
         band_filters = list(base_filters)
         if band["min_price"] is not None:
-            band_filters.append(Listing.price >= band["min_price"])
+            band_filters.append(Listing.price >= band["min_price"])  # type: ignore[arg-type]
         if band["max_price"] is not None:
-            band_filters.append(Listing.price < band["max_price"])
+            band_filters.append(Listing.price < band["max_price"])  # type: ignore[arg-type]
 
         count_result = await db.execute(
             select(func.count()).select_from(Listing).where(*band_filters)
@@ -373,7 +373,7 @@ async def get_listing_image(
 ) -> ListingImage | None:
     """Get image by ID."""
     result = await db.execute(
-        select(ListingImage).where(ListingImage.id == _to_uuid(image_id))
+        select(ListingImage).where(ListingImage.id == _to_uuid(image_id))  # type: ignore[arg-type]
     )
     return result.scalar_one_or_none()
 
@@ -381,7 +381,7 @@ async def get_listing_image(
 async def delete_listing_image(db: AsyncSession, image_id: str) -> None:
     """Delete an image."""
     await db.execute(
-        delete(ListingImage).where(ListingImage.id == _to_uuid(image_id))
+        delete(ListingImage).where(ListingImage.id == _to_uuid(image_id))  # type: ignore[arg-type]
     )
     await db.commit()
 
@@ -394,7 +394,7 @@ async def get_pending_listings(
     """Get all pending listings (for admin approval)."""
     result = await db.execute(
         select(Listing)
-        .where(Listing.status == ListingStatus.PENDING)
+        .where(Listing.status == ListingStatus.PENDING)  # type: ignore[arg-type]
         .offset(skip)
         .limit(limit)
     )

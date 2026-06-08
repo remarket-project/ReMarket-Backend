@@ -84,7 +84,7 @@ def _shop_params() -> dict[str, Any]:
     }
 
 
-async def _get(path: str, params: dict | None = None) -> dict[str, Any]:
+async def _get(path: str, params: dict[str, Any] | None = None) -> Any:
     url = f"{settings.GHN_API_URL}{path}"
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(url, headers=_headers(), params=params)
@@ -95,7 +95,7 @@ async def _get(path: str, params: dict | None = None) -> dict[str, Any]:
         return data["data"]
 
 
-async def _post(path: str, body: dict) -> dict[str, Any]:
+async def _post(path: str, body: dict[str, Any]) -> Any:
     url = f"{settings.GHN_API_URL}{path}"
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(url, headers=_headers(), json=body)
@@ -127,9 +127,9 @@ _GHN_KEY_MAP = {
 }
 
 
-def _parse_dataclass(dc_type: type, data: dict) -> Any:
+def _parse_dataclass(dc_type: type, data: dict[str, Any]) -> Any:
     """Map GHN PascalCase keys → snake_case and keep only valid fields."""
-    fields = dc_type.__dataclass_fields__
+    fields = dc_type.__dataclass_fields__  # type: ignore[attr-defined]
     kwargs = {}
     for k, v in data.items():
         key = _GHN_KEY_MAP.get(k, _to_snake(k))
@@ -278,16 +278,16 @@ async def create_order(
 
 
 async def get_order_info(order_code: str) -> dict[str, Any]:
-    return await _post("/v2/shipping-order/detail", {"order_code": order_code})
+    return await _post("/v2/shipping-order/detail", {"order_code": order_code})  # type: ignore[no-any-return]
 
 
 async def cancel_order_ghn(order_code: str) -> dict[str, Any]:
-    return await _post("/v2/shipping-order/cancel", {"order_code": order_code})
+    return await _post("/v2/shipping-order/cancel", {"order_code": order_code})  # type: ignore[no-any-return]
 
 
 async def return_order(order_codes: list[str]) -> list[dict[str, Any]]:
     """Gọi GHN API để yêu cầu trả hàng.
-    
+
     Chỉ áp dụng khi trạng thái đơn hiện tại là: storing, waiting_to_return
     Docs: https://api.ghn.vn/home/docs/detail?id=72
     """
@@ -299,7 +299,7 @@ async def return_order(order_codes: list[str]) -> list[dict[str, Any]]:
 
 async def delivery_again(order_codes: list[str]) -> list[dict[str, Any]]:
     """Gọi GHN API để yêu cầu giao lại.
-    
+
     Docs: https://api.ghn.vn/home/docs/detail?id=65
     """
     data = await _post("/v2/switch-status/delivery-again", {
@@ -320,7 +320,7 @@ async def get_service_availability(to_district_id: int, to_ward_code: str) -> di
         return {"available": False, "message": "Không thể kiểm tra dịch vụ giao hàng"}
 
 
-def verify_webhook_signature(payload: dict, signature: str) -> bool:
+def verify_webhook_signature(payload: dict[str, Any], signature: str) -> bool:
     """Verify GHN webhook signature (if GHN provides one).
     GHN uses HMAC-SHA256 with API token."""
     raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)

@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import and_
+from sqlalchemy import and_, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -39,7 +39,7 @@ async def get_review_by_order(
 ) -> Review | None:
     """Get first review for an order."""
     result = await db.execute(
-        select(Review).where(Review.order_id == order_id)
+        select(Review).where(Review.order_id == order_id)  # type: ignore[arg-type]
     )
     return result.scalar_one_or_none()
 
@@ -51,8 +51,8 @@ async def get_reviews_by_order(
     """Get all reviews for an order (typically buyer and seller reviews)."""
     result = await db.execute(
         select(Review)
-        .where(Review.order_id == order_id)
-        .order_by(Review.created_at.asc())
+        .where(Review.order_id == order_id)  # type: ignore[arg-type]
+        .order_by(asc(Review.created_at))
     )
     return list(result.scalars().all())
 
@@ -66,8 +66,8 @@ async def get_review_by_order_and_reviewer(
     result = await db.execute(
         select(Review).where(
             and_(
-                Review.order_id == order_id,
-                Review.reviewer_id == reviewer_id
+                Review.order_id == order_id,  # type: ignore[arg-type]
+                Review.reviewer_id == reviewer_id,  # type: ignore[arg-type]
             )
         )
     )
@@ -94,7 +94,7 @@ async def create_review(
 
     # Update user stats
     result = await db.execute(
-        select(User).where(User.id == reviewee_id)
+        select(User).where(User.id == reviewee_id)  # type: ignore[arg-type]
     )
     user = result.scalar_one_or_none()
 
@@ -126,15 +126,15 @@ async def get_user_reviews(
     count_result = await db.execute(
         select(func.count())
         .select_from(Review)
-        .where(Review.reviewee_id == user_id)
+        .where(Review.reviewee_id == user_id)  # type: ignore[arg-type]
     )
     total = count_result.scalar_one()
 
     # Get paginated items
     result = await db.execute(
         select(Review)
-        .where(Review.reviewee_id == user_id)
-        .order_by(Review.created_at.desc())
+        .where(Review.reviewee_id == user_id)  # type: ignore[arg-type]
+        .order_by(desc(Review.created_at))
         .offset(skip)
         .limit(limit)
     )

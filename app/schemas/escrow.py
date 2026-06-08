@@ -36,26 +36,15 @@ class ResolveEscrowRequest(BaseModel):
 # ============================================================================
 
 class EscrowRead(BaseModel):
-    """Escrow information response."""
+    """Escrow information response (simplified)."""
     id: uuid.UUID
     order_id: uuid.UUID
     amount: Decimal
     status: str
     buyer_wallet_id: uuid.UUID
     seller_wallet_id: uuid.UUID
-    dispute_reason: str | None
-    dispute_opened_at: datetime | None
-    admin_resolved_by: uuid.UUID | None
-    admin_notes: str | None
-    resolution_reason: str | None
-    resolved_at: datetime | None
-    dispute_status: str | None
     funded_at: datetime | None
-    delivered_at: datetime | None
-    release_requested_at: datetime | None
     released_at: datetime | None
-    auto_release_at: datetime | None
-    release_trigger: str | None
     created_at: datetime
     updated_at: datetime
 

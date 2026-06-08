@@ -3,8 +3,6 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-
 import sentry_sdk
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,8 +16,13 @@ from app.core.config import settings
 from app.crud import crud_offer
 from app.db.init_db import init_db
 from app.db.session import AsyncSessionLocal
-from app.services.escrow_worker import start_worker, stop_worker
+from app.services.order_auto_worker import start_auto_worker, stop_auto_worker
 from app.services.ghn_polling import start_polling
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 # Create services directory on app startup (__init__.py is handled by backend_pre_start.py)
 _services_dir = Path(__file__).parent / "services"
@@ -27,6 +30,7 @@ _services_dir.mkdir(parents=True, exist_ok=True)
 
 
 logger = logging.getLogger(__name__)
+
 offer_expiry_task: asyncio.Task | None = None
 ghn_poll_task: asyncio.Task | None = None
 
@@ -55,7 +59,7 @@ async def lifespan(app: FastAPI):
     # Startup
     await init_db()
     offer_expiry_task = asyncio.create_task(_offer_expiry_worker())
-    start_worker()  # Escrow auto-release worker
+    start_auto_worker()  # Order auto-complete worker
     ghn_poll_task = start_polling()  # GHN polling fallback
     logger.info("Application started")
 
@@ -74,7 +78,7 @@ async def lifespan(app: FastAPI):
             await ghn_poll_task
         except asyncio.CancelledError:
             pass
-    stop_worker()  # Escrow auto-release worker
+    stop_auto_worker()  # Order auto-complete worker
     logger.info("Application shutdown complete")
 
 
@@ -89,7 +93,7 @@ app = FastAPI(
 
 # Rate limiting
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 # GZip compression for responses
 app.add_middleware(GZipMiddleware, minimum_size=1000)

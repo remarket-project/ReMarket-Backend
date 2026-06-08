@@ -95,12 +95,11 @@ async def register(request: Request, data: UserRegister, session: SessionDep) ->
     await crud_user.update_user_refresh_token(session, user.id, refresh_token)
 
     # Send verification email (if needed)
-    verification_token = create_email_verification_token(user.email)
     # TODO: Implement send_verify_email from services
     # await send_verify_email(
     #     to_email=user.email,
     #     full_name=user.full_name,
-    #     verification_token=verification_token,
+    #     verification_token=create_email_verification_token(user.email),
     # )
 
     return TokenResponse(
@@ -227,11 +226,11 @@ async def refresh_access_token(
         if payload.get("type") != "refresh":
             raise ValueError("Invalid token type")
         user_id = uuid.UUID(payload.get("sub", ""))
-    except (InvalidTokenError, ValueError):
+    except (InvalidTokenError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token"
-        )
+        ) from exc
 
     # Get user and verify refresh token hash
     user = await crud_user.get_user_by_id(session, user_id)

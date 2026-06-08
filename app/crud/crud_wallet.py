@@ -22,7 +22,7 @@ async def get_wallet_by_user_id(
 ) -> Wallet | None:
     """Get wallet by user ID."""
     result = await db.execute(
-        select(Wallet).where(Wallet.user_id == user_id)
+        select(Wallet).where(Wallet.user_id == user_id)  # type: ignore[arg-type]
     )
     return result.scalar_one_or_none()
 
@@ -47,7 +47,7 @@ async def get_or_create_wallet(
 
     # Try select with FOR UPDATE first
     result = await db.execute(
-        select(Wallet).where(Wallet.user_id == user_id).with_for_update()
+        select(Wallet).where(Wallet.user_id == user_id).with_for_update()  # type: ignore[arg-type]
     )
     wallet = result.scalar_one_or_none()
     if wallet:
@@ -66,12 +66,12 @@ async def get_or_create_wallet(
         # Another request created the wallet between our SELECT and INSERT.
         # Re-read with FOR UPDATE.
         result = await db.execute(
-            select(Wallet).where(Wallet.user_id == user_id).with_for_update()
+            select(Wallet).where(Wallet.user_id == user_id).with_for_update()  # type: ignore[arg-type]
         )
         wallet = result.scalar_one_or_none()
         if wallet:
             return wallet
-        raise ValueError("Failed to create wallet due to concurrent access")
+        raise ValueError("Failed to create wallet due to concurrent access") from None
 
 
 async def add_balance(
@@ -107,7 +107,7 @@ async def add_balance(
     # Get wallet with row locking
     result = await db.execute(
         select(Wallet)
-        .where(Wallet.id == wallet_id)
+        .where(Wallet.id == wallet_id)  # type: ignore[arg-type]
         .with_for_update(nowait=False)
     )
     wallet = result.scalar_one_or_none()
@@ -179,7 +179,7 @@ async def lock_balance(
     # Get wallet with row locking
     result = await db.execute(
         select(Wallet)
-        .where(Wallet.id == wallet_id)
+        .where(Wallet.id == wallet_id)  # type: ignore[arg-type]
         .with_for_update(nowait=False)
     )
     wallet = result.scalar_one_or_none()
@@ -250,7 +250,7 @@ async def unlock_balance(
     # Get wallet with row locking
     result = await db.execute(
         select(Wallet)
-        .where(Wallet.id == wallet_id)
+        .where(Wallet.id == wallet_id)  # type: ignore[arg-type]
         .with_for_update(nowait=False)
     )
     wallet = result.scalar_one_or_none()
@@ -324,8 +324,8 @@ async def transfer_locked_to_user(
     # Get both wallets with row locking (order by ID to prevent deadlock)
     result = await db.execute(
         select(Wallet)
-        .where(Wallet.id.in_([from_wallet_id, to_wallet_id]))
-        .order_by(Wallet.id)
+        .where(Wallet.id.in_([from_wallet_id, to_wallet_id]))  # type: ignore[attr-defined]
+        .order_by(Wallet.id)  # type: ignore[arg-type]
         .with_for_update(nowait=False)
     )
     wallets = {w.id: w for w in result.scalars().all()}
@@ -419,15 +419,15 @@ async def get_wallet_transactions(
     count_result = await db.execute(
         select(func.count())
         .select_from(WalletTransaction)
-        .where(WalletTransaction.wallet_id == wallet_id)
+        .where(WalletTransaction.wallet_id == wallet_id)  # type: ignore[arg-type]
     )
     total = count_result.scalar_one()
 
     # Get transactions
     result = await db.execute(
         select(WalletTransaction)
-        .where(WalletTransaction.wallet_id == wallet_id)
-        .order_by(desc(WalletTransaction.created_at))
+        .where(WalletTransaction.wallet_id == wallet_id)  # type: ignore[arg-type]
+        .order_by(desc(WalletTransaction.created_at))  # type: ignore[arg-type]
         .offset(skip)
         .limit(limit)
     )

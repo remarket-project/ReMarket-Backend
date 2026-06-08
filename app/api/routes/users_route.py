@@ -57,14 +57,14 @@ async def _build_listing_with_images(session: SessionDep, listing: Listing) -> L
 async def _get_review_summary(session: SessionDep, user_id: uuid.UUID) -> ReviewSummaryRead:
     result = await session.execute(
         select(
-            func.count(Review.id),
-            func.avg(Review.rating),
-            func.sum(case((Review.rating == 5, 1), else_=0)),
-            func.sum(case((Review.rating == 4, 1), else_=0)),
-            func.sum(case((Review.rating == 3, 1), else_=0)),
-            func.sum(case((Review.rating == 2, 1), else_=0)),
-            func.sum(case((Review.rating == 1, 1), else_=0)),
-        ).where(Review.reviewee_id == user_id)
+            func.count().label("total_reviews"),
+            func.avg(Review.rating).label("avg_rating"),
+            func.sum(case((Review.rating == 5, 1), else_=0)).label("five"),  # type: ignore[arg-type]
+            func.sum(case((Review.rating == 4, 1), else_=0)).label("four"),  # type: ignore[arg-type]
+            func.sum(case((Review.rating == 3, 1), else_=0)).label("three"),  # type: ignore[arg-type]
+            func.sum(case((Review.rating == 2, 1), else_=0)).label("two"),  # type: ignore[arg-type]
+            func.sum(case((Review.rating == 1, 1), else_=0)).label("one"),  # type: ignore[arg-type]
+        ).where(Review.reviewee_id == user_id)  # type: ignore[arg-type]
     )
     total_reviews, avg_rating, five, four, three, two, one = result.one()
     return ReviewSummaryRead(
@@ -285,8 +285,8 @@ async def get_user_profile(
 
         total_active_listings_result = await session.execute(
             select(func.count()).select_from(Listing).where(
-                Listing.seller_id == user_id,
-                Listing.status == ListingStatus.ACTIVE,
+                Listing.seller_id == user_id,  # type: ignore[arg-type]
+                Listing.status == ListingStatus.ACTIVE,  # type: ignore[arg-type]
             )
         )
 

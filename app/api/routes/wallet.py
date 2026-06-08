@@ -4,16 +4,14 @@ Wallet API endpoints.
 Handles wallet management, balance viewing, transaction history,
 and Stripe Payout withdrawals (for sellers with connected accounts).
 """
-
-from fastapi import APIRouter, HTTPException, Request, status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+from datetime import datetime, timezone
+from decimal import Decimal
 
 import sqlalchemy
-from decimal import Decimal
-from datetime import datetime, timezone
-
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.api.deps import CurrentUser, SessionDep
 from app.core.config import settings
@@ -85,7 +83,7 @@ async def demo_topup(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
-        )
+        ) from e
 
     return updated_wallet
 
@@ -126,7 +124,7 @@ async def withdraw(
 
     result = await db.execute(
         sqlalchemy.select(Wallet)
-        .where(Wallet.id == wallet.id)
+        .where(Wallet.id == wallet.id)  # type: ignore[arg-type]
         .with_for_update(nowait=False)
     )
     locked_wallet = result.scalar_one_or_none()

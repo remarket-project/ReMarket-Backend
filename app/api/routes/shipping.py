@@ -149,7 +149,11 @@ async def create_shipping_order(
     data: ShippingOrderRequest,
 ):
     """Tạo đơn vận chuyển GHN cho order."""
-    order = await crud_order.get_order_by_id(db, data.order_id)
+    try:
+        order_uuid = UUID(data.order_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="order_id không hợp lệ") from None
+    order = await crud_order.get_order_by_id(db, order_uuid)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     if order.seller_id != current_user.id:

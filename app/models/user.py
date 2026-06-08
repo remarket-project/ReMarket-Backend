@@ -15,6 +15,7 @@ from sqlmodel import Field, Relationship, SQLModel
 from .enums import UserRole
 
 if TYPE_CHECKING:
+    from app.models.dispute import Dispute
     from app.models.listing import Listing
     from app.models.offer import Offer
     from app.models.order import Order
@@ -150,11 +151,11 @@ class User(UserBase, table=True):
         description="Stripe account status: pending, active, disabled",
     )
 
-    created_at: datetime = Field(
+    created_at: datetime = Field(  # type: ignore[call-overload]
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),
     )
-    updated_at: datetime = Field(
+    updated_at: datetime = Field(  # type: ignore[call-overload]
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),
     )
@@ -185,6 +186,7 @@ class User(UserBase, table=True):
         cascade_delete=True,
         sa_relationship_kwargs={"foreign_keys": "Review.reviewee_id"}
     )
+    disputes_raised: list["Dispute"] = Relationship(back_populates="raiser")
 
 
 # ============================================================================

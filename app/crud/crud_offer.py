@@ -6,7 +6,7 @@ Handles creation, retrieval, and updates of offers (negotiations).
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, or_, update
+from sqlalchemy import and_, desc, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -28,8 +28,8 @@ async def expire_stale_offers(db: AsyncSession) -> int:
         update(Offer)
         .where(
             and_(
-                Offer.created_at <= cutoff,
-                Offer.status.in_([OfferStatus.PENDING, OfferStatus.COUNTERED]),
+                Offer.created_at <= cutoff,  # type: ignore[arg-type]
+                Offer.status.in_([OfferStatus.PENDING, OfferStatus.COUNTERED]),  # type: ignore[attr-defined]
             )
         )
         .values(status=OfferStatus.EXPIRED, updated_at=utc_now())
@@ -49,7 +49,7 @@ async def create_offer(
 
     # Lock listing row to prevent concurrent status change
     result = await db.execute(
-        select(Listing).where(Listing.id == listing_id).with_for_update()
+        select(Listing).where(Listing.id == listing_id).with_for_update()  # type: ignore[arg-type]
     )
     listing = result.scalar_one_or_none()
     if not listing:
@@ -68,9 +68,9 @@ async def create_offer(
     pending_result = await db.execute(
         select(Offer).where(
             and_(
-                Offer.buyer_id == buyer_id,
-                Offer.listing_id == listing_id,
-                or_(Offer.status == OfferStatus.PENDING, Offer.status == OfferStatus.COUNTERED)
+                Offer.buyer_id == buyer_id,  # type: ignore[arg-type]
+                Offer.listing_id == listing_id,  # type: ignore[arg-type]
+                or_(Offer.status == OfferStatus.PENDING, Offer.status == OfferStatus.COUNTERED)  # type: ignore[arg-type]
             )
         ).with_for_update()
     )
@@ -92,7 +92,7 @@ async def create_offer(
 async def get_offer_by_id(db: AsyncSession, offer_id: uuid.UUID) -> Offer | None:
     """Get offer by ID."""
     await expire_stale_offers(db)
-    result = await db.execute(select(Offer).where(Offer.id == offer_id))
+    result = await db.execute(select(Offer).where(Offer.id == offer_id))  # type: ignore[arg-type]
     return result.scalar_one_or_none()
 
 
@@ -106,8 +106,8 @@ async def get_user_sent_offers(
     await expire_stale_offers(db)
     result = await db.execute(
         select(Offer)
-        .where(Offer.buyer_id == buyer_id)
-        .order_by(Offer.created_at.desc())
+        .where(Offer.buyer_id == buyer_id)  # type: ignore[arg-type]
+        .order_by(desc(Offer.created_at))
         .offset(skip)
         .limit(limit)
     )
@@ -125,8 +125,8 @@ async def get_seller_received_offers(
     result = await db.execute(
         select(Offer)
         .join(Listing)
-        .where(Listing.seller_id == seller_id)
-        .order_by(Offer.created_at.desc())
+        .where(Listing.seller_id == seller_id)  # type: ignore[arg-type]
+        .order_by(desc(Offer.created_at))
         .offset(skip)
         .limit(limit)
     )
@@ -143,8 +143,8 @@ async def get_offers_by_listing(
     await expire_stale_offers(db)
     result = await db.execute(
         select(Offer)
-        .where(Offer.listing_id == listing_id)
-        .order_by(Offer.created_at.desc())
+        .where(Offer.listing_id == listing_id)  # type: ignore[arg-type]
+        .order_by(desc(Offer.created_at))
         .offset(skip)
         .limit(limit)
     )
@@ -160,7 +160,7 @@ async def update_offer_status(
     """Update offer status — FIXED race condition with FOR UPDATE on offer + listing."""
     # Lock offer row
     result = await db.execute(
-        select(Offer).where(Offer.id == offer_id).with_for_update()
+        select(Offer).where(Offer.id == offer_id).with_for_update()  # type: ignore[arg-type]
     )
     offer = result.scalar_one_or_none()
     if not offer:
@@ -180,7 +180,7 @@ async def update_offer_status(
     if new_status == OfferStatus.ACCEPTED:
         # Lock listing to prevent double-sell
         listing_result = await db.execute(
-            select(Listing).where(Listing.id == offer.listing_id).with_for_update()
+            select(Listing).where(Listing.id == offer.listing_id).with_for_update()  # type: ignore[arg-type]
         )
         listing = listing_result.scalar_one_or_none()
         if not listing:
@@ -193,9 +193,9 @@ async def update_offer_status(
             select(Offer)
             .where(
                 and_(
-                    Offer.listing_id == offer.listing_id,
-                    Offer.id != offer.id,
-                    Offer.status.in_([OfferStatus.PENDING, OfferStatus.COUNTERED]),
+                    Offer.listing_id == offer.listing_id,  # type: ignore[arg-type]
+                    Offer.id != offer.id,  # type: ignore[arg-type]
+                    Offer.status.in_([OfferStatus.PENDING, OfferStatus.COUNTERED]),  # type: ignore[attr-defined]
                 )
             )
             .with_for_update(nowait=False)

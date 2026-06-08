@@ -8,6 +8,7 @@ from app.api.routes import (
     chat,
     connect,
     content,
+    disputes,
     escrow,
     listings,
     notifications,
@@ -50,6 +51,11 @@ api_router.include_router(content.router)
 # Wallet Route
 # ============================================================================
 api_router.include_router(wallet.router)
+
+# ============================================================================
+# Dispute Route
+# ============================================================================
+api_router.include_router(disputes.router)
 
 # ============================================================================
 # Escrow Route

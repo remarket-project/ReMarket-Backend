@@ -1,7 +1,7 @@
 """CRUD for chat models (basic)."""
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import asc, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat import ChatConversation, ConversationParticipant, Message
@@ -23,7 +23,7 @@ async def get_conversation_by_id(
     conversation_id: uuid.UUID,
 ) -> ChatConversation | None:
     result = await db.execute(
-        select(ChatConversation).where(ChatConversation.id == conversation_id)
+        select(ChatConversation).where(ChatConversation.id == conversation_id)  # type: ignore[arg-type]
     )
     return result.scalar_one_or_none()
 
@@ -37,13 +37,13 @@ async def get_conversation_by_listing_and_user(
         select(ChatConversation)
         .join(
             ConversationParticipant,
-            ConversationParticipant.conversation_id == ChatConversation.id,
+            ConversationParticipant.conversation_id == ChatConversation.id,  # type: ignore[arg-type]
         )
         .where(
-            ChatConversation.listing_id == listing_id,
-            ConversationParticipant.user_id == user_id,
+            ChatConversation.listing_id == listing_id,  # type: ignore[arg-type]
+            ConversationParticipant.user_id == user_id,  # type: ignore[arg-type]
         )
-        .order_by(ChatConversation.created_at.desc())
+        .order_by(desc(ChatConversation.created_at))
     )
     return result.scalar_one_or_none()
 
@@ -60,9 +60,9 @@ async def get_user_conversations(
             .select_from(ChatConversation)
             .join(
                 ConversationParticipant,
-                ConversationParticipant.conversation_id == ChatConversation.id,
+                ConversationParticipant.conversation_id == ChatConversation.id,  # type: ignore[arg-type]
             )
-            .where(ConversationParticipant.user_id == user_id)
+            .where(ConversationParticipant.user_id == user_id)  # type: ignore[arg-type]
         )
     ).scalar_one()
 
@@ -70,10 +70,10 @@ async def get_user_conversations(
         select(ChatConversation)
         .join(
             ConversationParticipant,
-            ConversationParticipant.conversation_id == ChatConversation.id,
+            ConversationParticipant.conversation_id == ChatConversation.id,  # type: ignore[arg-type]
         )
-        .where(ConversationParticipant.user_id == user_id)
-        .order_by(ChatConversation.created_at.desc())
+        .where(ConversationParticipant.user_id == user_id)  # type: ignore[arg-type]
+        .order_by(desc(ChatConversation.created_at))
         .offset(skip)
         .limit(limit)
     )
@@ -86,8 +86,8 @@ async def get_conversation_participants(
 ) -> list[ConversationParticipant]:
     result = await db.execute(
         select(ConversationParticipant)
-        .where(ConversationParticipant.conversation_id == conversation_id)
-        .order_by(ConversationParticipant.joined_at.asc())
+        .where(ConversationParticipant.conversation_id == conversation_id)  # type: ignore[arg-type]
+        .order_by(asc(ConversationParticipant.joined_at))
     )
     return list(result.scalars().all())
 
@@ -99,8 +99,8 @@ async def add_participant(
 ) -> ConversationParticipant:
     result = await db.execute(
         select(ConversationParticipant).where(
-            ConversationParticipant.conversation_id == conversation_id,
-            ConversationParticipant.user_id == user_id,
+            ConversationParticipant.conversation_id == conversation_id,  # type: ignore[arg-type]
+            ConversationParticipant.user_id == user_id,  # type: ignore[arg-type]
         )
     )
     participant = result.scalar_one_or_none()
@@ -124,8 +124,8 @@ async def is_participant(
 ) -> bool:
     result = await db.execute(
         select(ConversationParticipant).where(
-            ConversationParticipant.conversation_id == conversation_id,
-            ConversationParticipant.user_id == user_id,
+            ConversationParticipant.conversation_id == conversation_id,  # type: ignore[arg-type]
+            ConversationParticipant.user_id == user_id,  # type: ignore[arg-type]
         )
     )
     return result.scalar_one_or_none() is not None
@@ -154,7 +154,7 @@ async def get_conversation_messages(
 ) -> list[Message]:
     result = await db.execute(
         select(Message)
-        .where(Message.conversation_id == conversation_id)
-        .order_by(Message.created_at.asc())
+        .where(Message.conversation_id == conversation_id)  # type: ignore[arg-type]
+        .order_by(asc(Message.created_at))
     )
     return list(result.scalars().all())

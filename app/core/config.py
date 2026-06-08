@@ -122,9 +122,9 @@ class Settings(BaseSettings):
     STRIPE_CURRENCY: str = "usd"
     VND_USD_EXCHANGE_RATE: int = 25000
 
-    # Escrow auto-release
-    ESCROW_DISPUTE_PERIOD_DAYS: int = 3
-    ESCROW_AUTO_RELEASE_INTERVAL_SECONDS: int = 60
+    # Auto order completion
+    ORDER_AUTO_COMPLETE_HOURS: int = 48
+    ORDER_AUTO_CHECK_INTERVAL_SECONDS: int = 60
 
     # Withdraw limits
     WITHDRAW_MIN_AMOUNT: int = 50000

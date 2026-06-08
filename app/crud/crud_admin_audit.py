@@ -1,7 +1,7 @@
 """CRUD helpers for admin audit logs."""
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.admin_audit import AdminAuditLog
@@ -37,9 +37,9 @@ async def get_admin_audit_logs(
 ) -> tuple[list[AdminAuditLog], int]:
     conditions = []
     if action:
-        conditions.append(AdminAuditLog.action == action)
+        conditions.append(AdminAuditLog.action == action)  # type: ignore[arg-type]
     if target_type:
-        conditions.append(AdminAuditLog.target_type == target_type)
+        conditions.append(AdminAuditLog.target_type == target_type)  # type: ignore[arg-type]
 
     count_query = select(func.count()).select_from(AdminAuditLog)
     query = select(AdminAuditLog)
@@ -50,7 +50,6 @@ async def get_admin_audit_logs(
 
     total = (await db.execute(count_query)).scalar_one()
     result = await db.execute(
-        query.order_by(AdminAuditLog.created_at.desc()
-                       ).offset(skip).limit(limit)
+        query.order_by(desc(AdminAuditLog.created_at)).offset(skip).limit(limit)
     )
     return list(result.scalars().all()), int(total)

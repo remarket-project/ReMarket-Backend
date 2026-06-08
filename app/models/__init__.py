@@ -9,7 +9,8 @@ from app.models.category import (
     CategoryPublic,
     CategoryUpdate,
 )
-from app.models.chat import ChatConversation, ConversationParticipant, Message as ChatMessage
+from app.models.chat import ChatConversation, ConversationParticipant
+from app.models.chat import Message as ChatMessage
 from app.models.enums import (
     ConditionGrade,
     EscrowStatus,
@@ -20,7 +21,6 @@ from app.models.enums import (
     TransactionType,
     UserRole,
 )
-from app.models.return_request import ReturnReason, ReturnRequest, ReturnStatus
 from app.models.escrow import Escrow
 from app.models.listing import (
     Listing,
@@ -30,6 +30,7 @@ from app.models.notification import Notification
 from app.models.offer import Offer
 from app.models.order import Order
 from app.models.order_event import OrderEvent
+from app.models.return_request import ReturnReason, ReturnRequest, ReturnStatus
 from app.models.review import Review
 from app.models.saved_follow import FollowSeller, SavedListing
 from app.models.static_content import StaticContent

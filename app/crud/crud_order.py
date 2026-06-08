@@ -6,7 +6,7 @@ Handles order creation, retrieval, and status updates.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import or_, update
+from sqlalchemy import desc, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -26,7 +26,7 @@ def utc_now() -> datetime:
 
 async def get_order_by_id(db: AsyncSession, order_id: uuid.UUID) -> Order | None:
     """Get order by ID."""
-    result = await db.execute(select(Order).where(Order.id == order_id))
+    result = await db.execute(select(Order).where(Order.id == order_id))  # type: ignore[arg-type]
     return result.scalar_one_or_none()
 
 
@@ -39,19 +39,19 @@ async def get_user_orders(
     """Get paginated orders for a user (as buyer or seller)."""
     from sqlalchemy import func
 
-    base_condition = or_(Order.buyer_id == user_id, Order.seller_id == user_id)
+    base_condition = or_(Order.buyer_id == user_id, Order.seller_id == user_id)  # type: ignore[arg-type]
 
     # Count total
     count_result = await db.execute(
-        select(func.count()).select_from(Order).where(base_condition)
+        select(func.count()).select_from(Order).where(base_condition)  # type: ignore[arg-type]
     )
     total = count_result.scalar_one()
 
     # Get paginated items
     result = await db.execute(
         select(Order)
-        .where(base_condition)
-        .order_by(Order.created_at.desc())
+        .where(base_condition)  # type: ignore[arg-type]
+        .order_by(desc(Order.created_at))
         .offset(skip)
         .limit(limit)
     )
@@ -66,7 +66,7 @@ async def get_order_by_tracking(
 ) -> Order | None:
     """Get order by GHN tracking number."""
     result = await db.execute(
-        select(Order).where(Order.tracking_number == tracking_number)
+        select(Order).where(Order.tracking_number == tracking_number)  # type: ignore[arg-type]
     )
     return result.scalar_one_or_none()
 
@@ -88,7 +88,7 @@ async def create_direct_order(
     # Lock the listing to prevent concurrent purchases
     result = await db.execute(
         select(Listing)
-        .where(Listing.id == listing.id)
+        .where(Listing.id == listing.id)  # type: ignore[arg-type]
         .with_for_update(nowait=False)
     )
     locked_listing = result.scalar_one_or_none()
@@ -116,8 +116,8 @@ async def create_direct_order(
     result = await db.execute(
         select(Offer)
         .where(
-            Offer.listing_id == locked_listing.id,
-            Offer.status.in_([OfferStatus.PENDING, OfferStatus.COUNTERED])
+            Offer.listing_id == locked_listing.id,  # type: ignore[arg-type]
+            Offer.status.in_([OfferStatus.PENDING, OfferStatus.COUNTERED]),  # type: ignore[attr-defined]
         )
         .with_for_update()
     )
@@ -145,13 +145,13 @@ async def complete_order(db: AsyncSession, order: Order) -> Order:
     # Update seller's completed_orders count
     await db.execute(
         update(User)
-        .where(User.id == order.seller_id)
+        .where(User.id == order.seller_id)  # type: ignore[arg-type]
         .values(completed_orders=User.completed_orders + 1)
     )
 
     # Release escrow if funded (BUG-04 fix)
     escrow_result = await db.execute(
-        select(Escrow).where(Escrow.order_id == order.id).with_for_update()
+        select(Escrow).where(Escrow.order_id == order.id).with_for_update()  # type: ignore[arg-type]
     )
     escrow = escrow_result.scalar_one_or_none()
     if escrow and escrow.status == EscrowStatus.FUNDED.value:
@@ -174,6 +174,45 @@ async def complete_order(db: AsyncSession, order: Order) -> Order:
     return order
 
 
+async def refund_order(db: AsyncSession, order: Order) -> Order:
+    """Refund order: set RETURNED, refund escrow to buyer, revert listing."""
+    from app.crud.crud_wallet import unlock_balance
+
+    order.status = OrderStatus.RETURNED
+    order.updated_at = utc_now()
+
+    # Refund escrow if FUNDED or DISPUTED
+    escrow_result = await db.execute(
+        select(Escrow).where(Escrow.order_id == order.id).with_for_update()  # type: ignore[arg-type]
+    )
+    escrow = escrow_result.scalar_one_or_none()
+    if escrow and escrow.status in ("funded", "disputed"):
+        await unlock_balance(
+            db=db,
+            wallet_id=escrow.buyer_wallet_id,
+            amount=escrow.amount,
+            order_id=order.id,
+            description=f"Refund for returned order {order.id}",
+        )
+        escrow.status = EscrowStatus.REFUNDED.value
+        escrow.updated_at = utc_now()
+        db.add(escrow)
+
+    # Revert listing to ACTIVE
+    listing_result = await db.execute(
+        select(Listing).where(Listing.id == order.listing_id).with_for_update()  # type: ignore[arg-type]
+    )
+    listing = listing_result.scalar_one_or_none()
+    if listing:
+        listing.status = ListingStatus.ACTIVE
+        db.add(listing)
+
+    await db.commit()
+    await db.refresh(order)
+    await create_order_event(db, order.id, "ORDER_REFUNDED", "Order refunded to buyer")
+    return order
+
+
 async def cancel_order(db: AsyncSession, order: Order) -> Order:
     """Cancel an order, refund escrow if funded, and revert listing to ACTIVE.
 
@@ -186,7 +225,7 @@ async def cancel_order(db: AsyncSession, order: Order) -> Order:
 
     # Refund escrow if funded (BUG-03 fix)
     escrow_result = await db.execute(
-        select(Escrow).where(Escrow.order_id == order.id).with_for_update()
+        select(Escrow).where(Escrow.order_id == order.id).with_for_update()  # type: ignore[arg-type]
     )
     escrow = escrow_result.scalar_one_or_none()
     if escrow:
@@ -209,7 +248,7 @@ async def cancel_order(db: AsyncSession, order: Order) -> Order:
 
     # Revert listing status to ACTIVE
     listing_result = await db.execute(
-        select(Listing).where(Listing.id == order.listing_id).with_for_update()
+        select(Listing).where(Listing.id == order.listing_id).with_for_update()  # type: ignore[arg-type]
     )
     listing = listing_result.scalar_one_or_none()
     if listing:
@@ -229,7 +268,7 @@ async def update_order_status(
 ) -> Order | None:
     """Update order status with FOR UPDATE to prevent race conditions."""
     result = await db.execute(
-        select(Order).where(Order.id == order_id).with_for_update()
+        select(Order).where(Order.id == order_id).with_for_update()  # type: ignore[arg-type]
     )
     order = result.scalar_one_or_none()
     if not order:

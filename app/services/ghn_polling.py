@@ -30,9 +30,9 @@ async def poll_ghn_status():
             async with AsyncSessionLocal() as db:
                 active_orders = await db.execute(
                     select(Order).where(
-                        Order.shipping_provider == "ghn",
-                        Order.tracking_number.isnot(None),
-                        Order.status.in_([
+                        Order.shipping_provider == "ghn",  # type: ignore[arg-type]
+                        Order.tracking_number.is_not(None),
+                        Order.status.in_([  # type: ignore[attr-defined]
                             OrderStatus.SHIPPING,
                             OrderStatus.DELIVERY_FAILED,
                             OrderStatus.RETURNING,

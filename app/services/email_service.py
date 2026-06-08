@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -14,7 +15,7 @@ _env = Environment(
 )
 
 
-def _render(template_name: str, context: dict) -> str:
+def _render(template_name: str, context: dict[str, Any]) -> str:
     template = _env.get_template(template_name)
     return template.render(**context)
 

@@ -7,15 +7,15 @@ Also auto-expires return requests if seller doesn't respond within 2 days.
 """
 import asyncio
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
 from app.core.config import settings
 from app.crud import crud_escrow, crud_wallet
 from app.db.session import AsyncSessionLocal
-from app.models.escrow import Escrow
 from app.models.enums import EscrowStatus
+from app.models.escrow import Escrow
 from app.models.return_request import ReturnRequest, ReturnStatus
 
 logger = logging.getLogger(__name__)
@@ -33,10 +33,10 @@ async def _auto_release_worker() -> None:
                 # Auto-release escrows
                 result = await db.execute(
                     select(Escrow).where(
-                        Escrow.status == EscrowStatus.FUNDED.value,
-                        Escrow.delivered_at.isnot(None),
-                        Escrow.auto_release_at.isnot(None),
-                        Escrow.auto_release_at <= now,
+                        Escrow.status == EscrowStatus.FUNDED.value,  # type: ignore[arg-type]
+                        Escrow.delivered_at.is_not(None),
+                        Escrow.auto_release_at.is_not(None),
+                        Escrow.auto_release_at <= now,  # type: ignore[operator]
                     )
                 )
                 ready = list(result.scalars().all())
@@ -48,8 +48,8 @@ async def _auto_release_worker() -> None:
                 # Auto-approve return requests (seller not responding in 2 days)
                 expired_pending = await db.execute(
                     select(ReturnRequest).where(
-                        ReturnRequest.status == ReturnStatus.PENDING.value,
-                        ReturnRequest.created_at < now - timedelta(days=2),
+                        ReturnRequest.status == ReturnStatus.PENDING.value,  # type: ignore[arg-type]
+                        ReturnRequest.created_at < now - timedelta(days=2),  # type: ignore[operator]
                     )
                 )
                 for req in expired_pending.scalars():
@@ -61,8 +61,8 @@ async def _auto_release_worker() -> None:
                 # Auto-reject return requests (buyer not shipping in 7 days)
                 expired_shipping = await db.execute(
                     select(ReturnRequest).where(
-                        ReturnRequest.status == ReturnStatus.SELLER_APPROVED.value,
-                        ReturnRequest.seller_responded_at < now - timedelta(days=7),
+                        ReturnRequest.status == ReturnStatus.SELLER_APPROVED.value,  # type: ignore[arg-type]
+                        ReturnRequest.seller_responded_at < now - timedelta(days=7),  # type: ignore[operator]
                     )
                 )
                 for req in expired_shipping.scalars():
@@ -75,7 +75,7 @@ async def _auto_release_worker() -> None:
         await asyncio.sleep(interval)
 
 
-async def _release_escrow(db: AsyncSessionLocal, escrow: Escrow) -> None:
+async def _release_escrow(db: "AsyncSessionLocal", escrow: Escrow) -> None:
     """Release a single escrow to seller."""
     try:
         await crud_wallet.transfer_locked_to_user(

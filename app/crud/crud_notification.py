@@ -5,7 +5,7 @@ Handles notification creation, retrieval, and management.
 """
 import uuid
 
-from sqlalchemy import func, update
+from sqlalchemy import desc, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -24,15 +24,15 @@ async def get_user_notifications(
     count_result = await db.execute(
         select(func.count())
         .select_from(Notification)
-        .where(Notification.user_id == user_id)
+        .where(Notification.user_id == user_id)  # type: ignore[arg-type]
     )
     total = count_result.scalar_one()
 
     # Get paginated items
     result = await db.execute(
         select(Notification)
-        .where(Notification.user_id == user_id)
-        .order_by(Notification.created_at.desc())
+        .where(Notification.user_id == user_id)  # type: ignore[arg-type]
+        .order_by(desc(Notification.created_at))
         .offset(skip)
         .limit(limit)
     )
@@ -92,7 +92,7 @@ async def get_unread_count(
         select(func.count())
         .select_from(Notification)
         .where(
-            Notification.user_id == user_id,
+            Notification.user_id == user_id,  # type: ignore[arg-type]
             Notification.is_read.is_(False)
         )
     )
@@ -106,7 +106,7 @@ async def get_notification_by_id(
 ) -> Notification | None:
     """Get notification by ID."""
     result = await db.execute(
-        select(Notification).where(Notification.id == notification_id)
+        select(Notification).where(Notification.id == notification_id)  # type: ignore[arg-type]
     )
     return result.scalar_one_or_none()
 
@@ -119,8 +119,8 @@ async def mark_notification_as_read(
     """Mark a notification as read."""
     result = await db.execute(
         select(Notification).where(
-            Notification.id == notification_id,
-            Notification.user_id == user_id,
+            Notification.id == notification_id,  # type: ignore[arg-type]
+            Notification.user_id == user_id,  # type: ignore[arg-type]
         )
     )
     notification = result.scalar_one_or_none()
@@ -142,7 +142,7 @@ async def mark_all_notifications_as_read(
     result = await db.execute(
         update(Notification)
         .where(
-            Notification.user_id == user_id,
+            Notification.user_id == user_id,  # type: ignore[arg-type]
             Notification.is_read.is_(False)
         )
         .values(is_read=True)
@@ -159,8 +159,8 @@ async def delete_notification(
     """Delete a notification (only owner can delete)."""
     result = await db.execute(
         select(Notification).where(
-            Notification.id == notification_id,
-            Notification.user_id == user_id,
+            Notification.id == notification_id,  # type: ignore[arg-type]
+            Notification.user_id == user_id,  # type: ignore[arg-type]
         )
     )
     notification = result.scalar_one_or_none()

@@ -26,16 +26,20 @@ def _send_email_sync(to_email: str, subject: str, html_content: str, plain_conte
         plain_content or "Vui lòng xem tin nhắn này trong ứng dụng email hỗ trợ HTML.")
     message.add_alternative(html_content, subtype="html")
 
+    host: str = settings.SMTP_HOST  # type: ignore[assignment]
+    user: str = settings.SMTP_USER  # type: ignore[assignment]
+    password: str = settings.SMTP_PASSWORD  # type: ignore[assignment]
+
     if settings.SMTP_SSL:
-        with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT) as server:
-            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+        with smtplib.SMTP_SSL(host, settings.SMTP_PORT) as server:
+            server.login(user, password)
             server.send_message(message)
         return True
 
-    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+    with smtplib.SMTP(host, settings.SMTP_PORT) as server:
         if settings.SMTP_TLS:
             server.starttls()
-        server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+        server.login(user, password)
         server.send_message(message)
     return True
 

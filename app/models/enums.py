@@ -47,15 +47,14 @@ class PaymentMethod(str, Enum):
 
 class OrderStatus(str, Enum):
     """Status of an order."""
-    PENDING = "pending"            # Vừa tạo, chờ xác nhận
-    CONFIRMED = "confirmed"        # Đã xác nhận
-    SHIPPING = "shipping"          # Đang vận chuyển
-    DELIVERED = "delivered"        # Đã giao hàng
-    DELIVERY_FAILED = "delivery_failed"  # Giao thất bại
+    PENDING = "pending"            # Vừa tạo, chờ admin xử lý
+    SHIPPING = "shipping"          # Admin đang vận chuyển
+    DELIVERED = "delivered"        # Admin đã giao hàng
     RETURNING = "returning"        # Đang hoàn trả
-    RETURNED = "returned"          # Đã hoàn trả
-    COMPLETED = "completed"        # Hoàn tất (có thể review)
-    CANCELLED = "cancelled"        # Hủy
+    RETURNED = "returned"          # Đã hoàn trả (terminal)
+    COMPLETED = "completed"        # Hoàn tất (terminal)
+    CANCELLED = "cancelled"        # Hủy (terminal)
+    DISPUTED = "disputed"          # Đang tranh chấp
 
 
 class NotificationType(str, Enum):
@@ -68,12 +67,19 @@ class NotificationType(str, Enum):
     OFFER_COUNTERED = "offer_countered"
     OFFER_EXPIRED = "offer_expired"
     ORDER_CREATED = "order_created"
-    ORDER_CONFIRMED = "order_confirmed"
     ORDER_SHIPPING = "order_shipping"
     ORDER_DELIVERED = "order_delivered"
     ORDER_COMPLETED = "order_completed"
+    ORDER_ACCEPTED = "order_accepted"
+    ORDER_AUTO_COMPLETED = "order_auto_completed"
     ORDER_CANCELLED = "order_cancelled"
     ORDER_STATUS_UPDATED = "order_status_updated"
+    DISPUTE_OPENED = "dispute_opened"
+    DISPUTE_RESOLVED = "dispute_resolved"
+    SHIPPING_CREATED = "shipping_created"
+    SHIPPING_DELIVERED = "shipping_delivered"
+    RETURN_REQUESTED = "return_requested"
+    RETURN_CONFIRMED = "return_confirmed"
     REVIEW_RECEIVED = "review_received"
     WALLET_BALANCE_UPDATED = "wallet_balance_updated"
     WALLET_LOCKED = "wallet_locked"
@@ -96,9 +102,7 @@ class TransactionType(str, Enum):
 
 class EscrowStatus(str, Enum):
     """Status of escrow account."""
-    PENDING = "pending"                    # Chờ buyer fund
-    FUNDED = "funded"                      # Đã fund, chờ giao hàng
-    RELEASE_REQUESTED = "release_requested"  # Buyer request release
-    RELEASED = "released"                  # Đã release cho seller
-    DISPUTED = "disputed"                  # Tranh chấp
-    REFUNDED = "refunded"                  # Hoàn tiền cho buyer
+    PENDING = "pending"            # Chờ fund
+    FUNDED = "funded"              # Đã fund
+    RELEASED = "released"          # Đã giải ngân cho seller
+    REFUNDED = "refunded"          # Hoàn tiền cho buyer

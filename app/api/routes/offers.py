@@ -1,4 +1,5 @@
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
 from slowapi import Limiter
@@ -8,7 +9,7 @@ from sqlalchemy.future import select
 from app.api.deps import CurrentUser, SessionDep
 from app.core.websocket_manager import ws_manager
 from app.crud import crud_escrow, crud_notification, crud_offer, crud_wallet
-from app.models.enums import ListingStatus, NotificationType, OfferStatus, OrderStatus
+from app.models.enums import NotificationType, OfferStatus, OrderStatus
 from app.models.listing import Listing
 from app.models.order import Order
 from app.schemas.offer import OfferCreate, OfferRead, OfferStatusUpdate
@@ -34,7 +35,8 @@ async def create_offer(
             offer_price=offer_in.offer_price
         )
 
-        result = await db.execute(select(Listing).where(Listing.id == offer.listing_id))
+        where_cond: Any = Listing.id == offer.listing_id  # type: ignore[arg-type]
+        result = await db.execute(select(Listing).where(where_cond))
         listing = result.scalar_one_or_none()
         if listing:
             await crud_notification.create_notification(
@@ -50,9 +52,44 @@ async def create_offer(
                 "type": "offer_received",
                 "user_id": str(listing.seller_id),
             })
+
+            # Auto-create chat conversation and post notification message
+            try:
+                from app.crud import crud_chat
+                existing_chat = await crud_chat.get_conversation_by_listing_and_user(
+                    db, offer.listing_id, current_user.id
+                )
+                if not existing_chat:
+                    existing_chat = await crud_chat.create_conversation(
+                        db, listing_id=offer.listing_id
+                    )
+                    await crud_chat.add_participant(db, existing_chat.id, current_user.id)
+                    await crud_chat.add_participant(db, existing_chat.id, listing.seller_id)
+
+                formatted_price = f"{offer.offer_price:,.0f} VND"
+                message = await crud_chat.post_message(
+                    db,
+                    conversation_id=existing_chat.id,
+                    sender_id=current_user.id,
+                    content=f"Mình đã gửi đề nghị {formatted_price} cho bạn.",
+                )
+                await ws_manager.send_to_user(listing.seller_id, {
+                    "type": "chat_message",
+                    "conversation_id": str(existing_chat.id),
+                    "message": {
+                        "id": str(message.id),
+                        "conversation_id": str(message.conversation_id),
+                        "sender_id": str(message.sender_id),
+                        "content": message.content,
+                        "created_at": message.created_at.isoformat(),
+                    },
+                })
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning("Failed to auto-create conversation: %s", e)
         return offer
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.get("/me/sent", response_model=list[OfferRead])
@@ -88,7 +125,8 @@ async def get_offers_for_listing(
     limit: int = 10,
 ):
     """Danh sách yêu cầu mua cho một bài đăng"""
-    result = await db.execute(select(Listing).where(Listing.id == listing_id))
+        where_cond: Any = Listing.id == listing_id  # type: ignore[arg-type]
+        result = await db.execute(select(Listing).where(where_cond))
     listing = result.scalar_one_or_none()
     if not listing:
         raise HTTPException(status_code=404, detail="Bài đăng không tìm thấy")
@@ -116,7 +154,8 @@ async def update_offer_status(
         raise HTTPException(
             status_code=404, detail="Yêu cầu mua không tìm thấy")
 
-    result = await db.execute(select(Listing).where(Listing.id == offer.listing_id))
+    where_cond: Any = Listing.id == offer.listing_id  # type: ignore[arg-type]
+    result = await db.execute(select(Listing).where(where_cond))
     listing = result.scalar_one_or_none()
     if not listing:
         raise HTTPException(status_code=404, detail="Bài đăng không tìm thấy")
@@ -183,7 +222,7 @@ async def update_offer_status(
             counter_price=status_update.offer_price,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     order_id = None
     if status_update.status == OfferStatus.ACCEPTED:
@@ -275,7 +314,7 @@ async def update_offer_status(
             target_user_id = listing.seller_id
             message = f"Người mua đã trả lời yêu cầu mua ngược lại cho '{listing.title}' với '{status_update.status}'."
 
-        notif = await crud_notification.create_notification(
+        await crud_notification.create_notification(
             db=db,
             user_id=target_user_id,
             type=notification_type,
@@ -284,13 +323,13 @@ async def update_offer_status(
             data={"offer_id": str(offer.id), "listing_id": str(listing.id)},
         )
         await ws_manager.send_to_user(target_user_id, {
-            "type": str(notification_type.value),
+            "type": notification_type.value,
             "offer_id": str(offer.id),
             "listing_id": str(listing.id),
         })
 
     if previous_status != OfferStatus.EXPIRED and updated_offer.status == OfferStatus.EXPIRED:
-        notif = await crud_notification.create_notification(
+        await crud_notification.create_notification(
             db=db,
             user_id=offer.buyer_id,
             type=NotificationType.OFFER_EXPIRED,
@@ -321,7 +360,8 @@ async def get_offer(
         raise HTTPException(
             status_code=404, detail="Yêu cầu mua không tìm thấy")
 
-    result = await db.execute(select(Listing).where(Listing.id == offer.listing_id))
+    where_cond: Any = Listing.id == offer.listing_id  # type: ignore[arg-type]
+    result = await db.execute(select(Listing).where(where_cond))
     listing = result.scalar_one_or_none()
     if not listing:
         raise HTTPException(status_code=404, detail="Bài đăng không tìm thấy")

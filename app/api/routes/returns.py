@@ -12,7 +12,7 @@ from app.crud.crud_return import get_return_by_id
 from app.crud.crud_wallet import get_wallet_by_user_id, unlock_balance
 from app.models.enums import OrderStatus
 from app.models.return_request import ReturnReason, ReturnRequest, ReturnStatus
-from app.services.escrow_worker import schedule_auto_release
+from app.services.escrow_worker import schedule_auto_release  # noqa: F401
 
 router = APIRouter(prefix="/returns", tags=["Returns"])
 
@@ -41,7 +41,11 @@ async def create_return_request(
     data: ReturnRequestCreate,
 ):
     """Buyer gửi yêu cầu hoàn hàng (chỉ wallet, trong 7 ngày)."""
-    order = await crud_order.get_order_by_id(db, data.order_id)
+    try:
+        order_uuid = uuid.UUID(data.order_id)
+    except ValueError:
+        raise HTTPException(422, "order_id không hợp lệ") from None
+    order = await crud_order.get_order_by_id(db, order_uuid)
     if not order:
         raise HTTPException(404, "Order not found")
     if order.buyer_id != current_user.id:
@@ -55,7 +59,8 @@ async def create_return_request(
         if days_since > 7:
             raise HTTPException(400, "Return period (7 days) has expired")
 
-    existing = await get_return_by_id(db, order.id)
+    from app.crud.crud_return import get_return_by_order_id
+    existing = await get_return_by_order_id(db, order.id)
     if existing:
         raise HTTPException(400, "Return request already exists for this order")
 
@@ -168,7 +173,7 @@ async def confirm_return_received(
                 seller_wallet.balance -= req.return_fee
                 db.add(seller_wallet)
 
-        order.status = OrderStatus.RETURNED
+        order.status = OrderStatus.RETURNED  # type: ignore[assignment]
         db.add(order)
 
         req.status = ReturnStatus.REFUNDED.value

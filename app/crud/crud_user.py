@@ -4,23 +4,26 @@ CRUD operations for User model.
 Pure database operations (no business logic).
 """
 import uuid
+from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.core.security import get_password_hash, hash_token
 from app.models import User, UserCreate, UserRegister, UserUpdate
+from app.models.enums import OrderStatus
+from app.models.order import Order
 
 
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
     """Get user by email. Returns None if not found."""
-    result = await db.execute(select(User).where(User.email == email))
+    result = await db.execute(select(User).where(User.email == email))  # type: ignore[arg-type]
     return result.scalar_one_or_none()
 
 
 async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
     """Get user by ID. Returns None if not found."""
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = await db.execute(select(User).where(User.id == user_id))  # type: ignore[arg-type]
     return result.scalar_one_or_none()
 
 
@@ -30,7 +33,7 @@ async def get_user_by_refresh_token(
 ) -> User | None:
     """Find user by their hashed refresh token."""
     result = await db.execute(
-        select(User).where(User.hashed_refresh_token == hashed_token)
+        select(User).where(User.hashed_refresh_token == hashed_token)  # type: ignore[arg-type]
     )
     return result.scalar_one_or_none()
 
@@ -220,15 +223,15 @@ async def update_user_ratings(db: AsyncSession, user_id: uuid.UUID) -> User | No
     result = await db.execute(
         select(
             func.avg(Review.rating).label("avg_rating"),
-            func.count(Review.id).label("review_count")
-        ).where(Review.reviewee_id == user_id)
+            func.count().label("review_count")
+        ).where(Review.reviewee_id == user_id)  # type: ignore[arg-type]
     )
     row = result.one()
     avg_rating = row.avg_rating or 0
     review_count = row.review_count or 0
 
     # Update user ratings
-    user.rating_avg = round(float(avg_rating), 2) if avg_rating else 0.0
+    user.rating_avg = Decimal(str(round(float(avg_rating), 2))) if avg_rating else Decimal("0.00")
     user.rating_count = review_count
 
     # Calculate trust_score based on:
@@ -236,23 +239,21 @@ async def update_user_ratings(db: AsyncSession, user_id: uuid.UUID) -> User | No
     # - Completed orders (at least 5 for higher trust)
     # - Is email verified
     completed_orders_result = await db.execute(
-        select(func.count()).select_from(__import__(
-            'app.models', fromlist=['Order']).Order)
+        select(func.count())
+        .select_from(Order)
         .where(
-            (__import__('app.models', fromlist=['Order']).Order.seller_id == user_id) &
-            (__import__('app.models', fromlist=[
-             'Order']).Order.status == 'COMPLETED')
+            Order.seller_id == user_id,  # type: ignore[arg-type]
+            Order.status == OrderStatus.COMPLETED,  # type: ignore[arg-type]
         )
     )
     completed_orders = completed_orders_result.scalar_one() or 0
 
     # Trust score calculation: (rating/5) * 0.6 + min(completed_orders/10, 1) * 0.3 + is_email_verified * 0.1
-    trust_score = (
-        (user.rating_avg / 5.0) * 0.6 +
-        min(completed_orders / 10.0, 1.0) * 0.3 +
-        (0.1 if user.is_email_verified else 0)
-    )
-    user.trust_score = round(trust_score * 100, 1)  # Convert to percentage
+    rating_factor = (float(user.rating_avg) / 5.0) * 0.6
+    orders_factor = min(completed_orders / 10.0, 1.0) * 0.3
+    email_factor = 0.1 if user.is_email_verified else 0
+    trust_score = rating_factor + orders_factor + email_factor
+    user.trust_score = Decimal(str(round(trust_score * 100, 1)))  # Convert to percentage
 
     db.add(user)
     await db.commit()

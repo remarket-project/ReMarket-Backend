@@ -11,6 +11,8 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from typing import Any
+
 from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
@@ -43,7 +45,7 @@ class WebSocketManager:
     - Theo dõi trạng thái online của người dùng
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._user_connections: dict[uuid.UUID, set[str]] = {}
         self._connections: dict[str, ConnectionInfo] = {}
         self._lock = asyncio.Lock()
@@ -73,7 +75,7 @@ class WebSocketManager:
         logger.info(f"WebSocket kết nối: user={user_id}, conn={connection_id}")
         return connection_id
 
-    async def disconnect(self, connection_id: str):
+    async def disconnect(self, connection_id: str) -> None:
         """
         Xóa kết nối khi ngắt.
 
@@ -94,7 +96,7 @@ class WebSocketManager:
 
         logger.info(f"WebSocket ngắt: conn={connection_id}")
 
-    async def send_to_user(self, user_id: uuid.UUID, message: dict):
+    async def send_to_user(self, user_id: uuid.UUID, message: dict[str, Any]) -> None:
         """
         Gửi tin nhắn đến tất cả kết nối của một người dùng.
 
@@ -118,7 +120,7 @@ class WebSocketManager:
         for conn_id in disconnected:
             await self.disconnect(conn_id)
 
-    async def broadcast_to_users(self, user_ids: list[uuid.UUID], message: dict):
+    async def broadcast_to_users(self, user_ids: list[uuid.UUID], message: dict[str, Any]) -> None:
         """
         Gửi tin nhắn đến nhiều người dùng.
 
@@ -150,7 +152,7 @@ class WebSocketManager:
         """
         return user_id in self._user_connections
 
-    async def update_last_ping(self, connection_id: str):
+    async def update_last_ping(self, connection_id: str) -> None:
         """
         Cập nhật timestamp ping cuối cùng cho kết nối.
 

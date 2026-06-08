@@ -5,7 +5,7 @@ Replaces VNPay with Stripe PaymentIntents for wallet topup.
 import logging
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUser, SessionDep

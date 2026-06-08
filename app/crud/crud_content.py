@@ -12,8 +12,8 @@ async def get_content_by_key(
 ) -> StaticContent | None:
     result = await db.execute(
         select(StaticContent).where(
-            StaticContent.key == key,
-            StaticContent.locale == locale,
+            StaticContent.key == key,  # type: ignore[arg-type]
+            StaticContent.locale == locale,  # type: ignore[arg-type]
         )
     )
     return result.scalar_one_or_none()
@@ -29,8 +29,8 @@ async def get_contents_by_keys(
 
     result = await db.execute(
         select(StaticContent).where(
-            StaticContent.locale == locale,
-            StaticContent.key.in_(keys),
+            StaticContent.locale == locale,  # type: ignore[arg-type]
+            StaticContent.key.in_(keys),  # type: ignore[attr-defined]
         )
     )
     contents = list(result.scalars().all())

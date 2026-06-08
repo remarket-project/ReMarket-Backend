@@ -35,11 +35,11 @@ class Listing(ListingBase, table=True):
     seller_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE")
     category_id: uuid.UUID = Field(foreign_key="categories.id")
 
-    created_at: datetime = Field(
+    created_at: datetime = Field(  # type: ignore[call-overload]
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),
     )
-    updated_at: datetime = Field(
+    updated_at: datetime = Field(  # type: ignore[call-overload]
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),
     )
@@ -61,7 +61,7 @@ class Listing(ListingBase, table=True):
     view_count: int = Field(default=0)
     save_count: int = Field(default=0)
     is_featured: bool = Field(default=False)
-    published_at: datetime | None = Field(
+    published_at: datetime | None = Field(  # type: ignore[call-overload]
         default=None, sa_type=DateTime(timezone=True))
     location_summary: str | None = Field(default=None, max_length=255)
 
@@ -77,7 +77,7 @@ class ListingImage(ListingImageBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     listing_id: uuid.UUID = Field(
         foreign_key="listings.id", ondelete="CASCADE")
-    created_at: datetime = Field(
+    created_at: datetime = Field(  # type: ignore[call-overload]
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),
     )

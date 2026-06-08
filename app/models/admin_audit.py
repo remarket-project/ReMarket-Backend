@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlmodel import Field, SQLModel
 
 
-def now():
+def now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
