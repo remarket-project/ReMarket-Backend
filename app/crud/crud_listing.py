@@ -17,7 +17,7 @@ from app.models.listing import Listing, ListingImage
 
 def _to_uuid(value: str | uuid.UUID) -> uuid.UUID:
     """Convert string or UUID to UUID."""
-    return value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
+    return value if isinstance(value, uuid.UUID) else uuid.UUID(value)
 
 
 async def create_listing(
@@ -81,7 +81,7 @@ async def get_images_for_listings(
     result = await db.execute(
         select(ListingImage)
         .where(ListingImage.listing_id.in_(listing_ids))  # type: ignore[attr-defined]
-        .order_by(ListingImage.listing_id, desc(ListingImage.is_primary))
+        .order_by(ListingImage.listing_id, desc(ListingImage.is_primary))  # type: ignore[arg-type]
     )
     images = result.scalars().all()
 
@@ -133,7 +133,7 @@ async def update_listing(
     status: ListingStatus | None = None,
 ) -> Listing | None:
     """Update a listing (partial update)."""
-    update_data = {}
+    update_data: dict[str, object] = {}
     if title is not None:
         update_data["title"] = title
     if description is not None:
@@ -213,7 +213,7 @@ async def search_listings(
     limit: int = 100
 ) -> tuple[list[Listing], int]:
     """Search listings with filters."""
-    query = select(Listing).options(joinedload(Listing.seller))
+    query = select(Listing).options(joinedload(Listing.seller))  # type: ignore[arg-type]
     count_query = select(func.count()).select_from(Listing)
 
     conditions = []
@@ -221,14 +221,14 @@ async def search_listings(
     if status:
         conditions.append(Listing.status == status)  # type: ignore[arg-type]
     if featured_only:
-        conditions.append(Listing.is_featured.is_(True))
+        conditions.append(Listing.is_featured.is_(True))  # type: ignore[arg-type]
     if keyword:
         keyword_filter = f"%{keyword}%"
         conditions.append(
             or_(
-                Listing.title.ilike(keyword_filter),
-                Listing.description.ilike(keyword_filter),
-                Listing.location_summary.ilike(keyword_filter),
+                Listing.title.ilike(keyword_filter),  # type: ignore[arg-type]
+                Listing.description.ilike(keyword_filter),  # type: ignore[arg-type]
+                Listing.location_summary.ilike(keyword_filter),  # type: ignore[arg-type]
             )
         )
     if category_id:
@@ -251,12 +251,12 @@ async def search_listings(
 
     # Get paginated results
     order_map = {
-        "newest": [desc(Listing.created_at)],
-        "oldest": [asc(Listing.created_at)],
-        "price_asc": [asc(Listing.price), desc(Listing.created_at)],
-        "price_desc": [desc(Listing.price), desc(Listing.created_at)],
-        "popular": [desc(Listing.view_count), desc(Listing.save_count), desc(Listing.created_at)],
-        "featured": [desc(Listing.is_featured), desc(Listing.published_at), desc(Listing.created_at)],
+        "newest": [desc(Listing.created_at)],  # type: ignore[arg-type]
+        "oldest": [asc(Listing.created_at)],  # type: ignore[arg-type]
+        "price_asc": [asc(Listing.price), desc(Listing.created_at)],  # type: ignore[arg-type]
+        "price_desc": [desc(Listing.price), desc(Listing.created_at)],  # type: ignore[arg-type]
+        "popular": [desc(Listing.view_count), desc(Listing.save_count), desc(Listing.created_at)],  # type: ignore[arg-type]
+        "featured": [desc(Listing.is_featured), desc(Listing.published_at), desc(Listing.created_at)],  # type: ignore[arg-type]
     }
     query = query.order_by(
         *order_map.get(sort_by, order_map["newest"])).offset(skip).limit(limit)
@@ -298,21 +298,21 @@ async def get_related_listings(
 
     result = await db.execute(
         select(Listing)
-        .options(joinedload(Listing.seller))
+        .options(joinedload(Listing.seller))  # type: ignore[arg-type]
         .where(
             Listing.status == ListingStatus.ACTIVE,  # type: ignore[arg-type]
             Listing.id != listing.id,  # type: ignore[arg-type]
             Listing.category_id == listing.category_id,  # type: ignore[arg-type]
         )
         .order_by(
-            desc(Listing.is_featured),
-            desc(Listing.view_count),
-            desc(Listing.created_at),
+            desc(Listing.is_featured),  # type: ignore[arg-type]
+            desc(Listing.view_count),  # type: ignore[arg-type]
+            desc(Listing.created_at),  # type: ignore[arg-type]
         )
         .offset(skip)
         .limit(limit)
     )
-    return list(result.scalars().all()), int(total)
+    return list(result.scalars().all()), total
 
 
 async def get_listing_suggestions(
@@ -321,12 +321,12 @@ async def get_listing_suggestions(
     limit: int = 10,
 ) -> list[str]:
     result = await db.execute(
-        select(Listing.title)
+        select(Listing.title)  # type: ignore[arg-type]
         .where(
             Listing.status == ListingStatus.ACTIVE,  # type: ignore[arg-type]
-            Listing.title.ilike(f"%{keyword}%"),
+            Listing.title.ilike(f"%{keyword}%"),  # type: ignore[arg-type]
         )
-        .order_by(desc(Listing.view_count), desc(Listing.created_at))
+        .order_by(desc(Listing.view_count), desc(Listing.created_at))  # type: ignore[arg-type]
         .limit(limit)
     )
     return [row[0] for row in result.all() if row[0]]
@@ -357,11 +357,11 @@ async def get_price_band_summary(
             band_filters.append(Listing.price < band["max_price"])  # type: ignore[arg-type]
 
         count_result = await db.execute(
-            select(func.count()).select_from(Listing).where(*band_filters)
+            select(func.count()).select_from(Listing).where(*band_filters)  # type: ignore[arg-type]
         )
         summary.append({
             **band,
-            "count": int(count_result.scalar_one()),
+            "count": count_result.scalar_one(),
         })
 
     return summary

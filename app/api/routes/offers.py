@@ -125,8 +125,8 @@ async def get_offers_for_listing(
     limit: int = 10,
 ):
     """Danh sách yêu cầu mua cho một bài đăng"""
-        where_cond: Any = Listing.id == listing_id  # type: ignore[arg-type]
-        result = await db.execute(select(Listing).where(where_cond))
+    where_cond: Any = Listing.id == listing_id  # type: ignore[arg-type]
+    result = await db.execute(select(Listing).where(where_cond))
     listing = result.scalar_one_or_none()
     if not listing:
         raise HTTPException(status_code=404, detail="Bài đăng không tìm thấy")

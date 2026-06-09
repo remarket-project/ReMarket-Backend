@@ -32,7 +32,7 @@ async def get_user_notifications(
     result = await db.execute(
         select(Notification)
         .where(Notification.user_id == user_id)  # type: ignore[arg-type]
-        .order_by(desc(Notification.created_at))
+        .order_by(desc(Notification.created_at))  # type: ignore[arg-type]
         .offset(skip)
         .limit(limit)
     )
@@ -67,7 +67,7 @@ async def create_notification(
     final_data = dict(data or {})
     if related_id is not None:
         # normalize related id into data payload
-        final_data.setdefault("related_id", str(related_id))
+        final_data.setdefault("related_id", str(related_id))  # type: ignore[arg-type]
 
     notification = Notification(
         user_id=user_id,
@@ -93,11 +93,11 @@ async def get_unread_count(
         .select_from(Notification)
         .where(
             Notification.user_id == user_id,  # type: ignore[arg-type]
-            Notification.is_read.is_(False)
+            Notification.is_read.is_(False)  # type: ignore[arg-type]
         )
     )
     count = result.scalar_one()
-    return int(count)
+    return count
 
 
 async def get_notification_by_id(
@@ -143,12 +143,12 @@ async def mark_all_notifications_as_read(
         update(Notification)
         .where(
             Notification.user_id == user_id,  # type: ignore[arg-type]
-            Notification.is_read.is_(False)
+            Notification.is_read.is_(False)  # type: ignore[arg-type]
         )
         .values(is_read=True)
     )
     await db.commit()
-    return int(result.rowcount or 0)
+    return result.rowcount or 0  # type: ignore[return-value]
 
 
 async def delete_notification(

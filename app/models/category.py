@@ -53,7 +53,7 @@ class CategoryUpdate(SQLModel):
 class Category(CategoryBase, table=True):
     """Category database model."""
 
-    __tablename__ = "categories"
+    __tablename__: str = "categories" # type: ignore
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
 

@@ -100,7 +100,7 @@ async def get_current_user_info(current_user: CurrentUser) -> UserPrivate:
     **Errors:**
     - 401: Unauthorized (not logged in)
     """
-    return current_user
+    return UserPrivate.model_validate(current_user)
 
 
 # ============================================================================
@@ -135,7 +135,9 @@ async def update_my_profile(
     - 401: Unauthorized
     """
     updated_user = await crud_user.update_user(session, current_user.id, data)
-    return updated_user
+    if not updated_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return UserPrivate.model_validate(updated_user)
 
 
 # ============================================================================
@@ -184,6 +186,7 @@ async def change_password(
 
     # Update password
     user = await crud_user.get_user_by_id(session, current_user.id)
+    assert user is not None
     user.password_hash = get_password_hash(data.new_password)
     session.add(user)
     await session.commit()
@@ -223,80 +226,81 @@ async def get_user_profile(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-    return user
+    return UserPublic.model_validate(user)
 
-    @router.get(
-        "/{user_id}/reviews/summary",
-        response_model=ReviewSummaryOnlyRead,
-        summary="Get review summary",
-        description="Get aggregate review stats for a user.",
+
+@router.get(
+    "/{user_id}/reviews/summary",
+    response_model=ReviewSummaryOnlyRead,
+    summary="Get review summary",
+    description="Get aggregate review stats for a user.",
+)
+async def get_user_review_summary(
+    user_id: uuid.UUID,
+    session: SessionDep,
+) -> ReviewSummaryOnlyRead:
+    user = await crud_user.get_user_by_id(session, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    summary = await _get_review_summary(session, user_id)
+    return ReviewSummaryOnlyRead(
+        user_id=user_id,
+        average_rating=summary.average_rating,
+        total_reviews=summary.total_reviews,
+        rating_breakdown=summary.rating_breakdown,
     )
-    async def get_user_review_summary(
-        user_id: uuid.UUID,
-        session: SessionDep,
-    ) -> ReviewSummaryOnlyRead:
-        user = await crud_user.get_user_by_id(session, user_id)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found",
-            )
 
-        summary = await _get_review_summary(session, user_id)
-        return ReviewSummaryOnlyRead(
-            user_id=user_id,
-            average_rating=summary.average_rating,
-            total_reviews=summary.total_reviews,
-            rating_breakdown=summary.rating_breakdown,
+
+@router.get(
+    "/{user_id}/shop",
+    response_model=SellerShopProfileRead,
+    summary="Get seller shop profile",
+    description="Get a seller profile with recent active listings and review stats.",
+)
+async def get_seller_shop_profile(
+    user_id: uuid.UUID,
+    session: SessionDep,
+) -> SellerShopProfileRead:
+    user = await crud_user.get_user_by_id(session, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
         )
 
-    @router.get(
-        "/{user_id}/shop",
-        response_model=SellerShopProfileRead,
-        summary="Get seller shop profile",
-        description="Get a seller profile with recent active listings and review stats.",
+    seller = UserPublic.model_validate(user)
+    review_summary = await _get_review_summary(session, user_id)
+
+    recent_listings_result, _ = await crud_listing.search_listings(
+        session,
+        seller_id=str(user_id),
+        status=ListingStatus.ACTIVE,
+        sort_by="newest",
+        skip=0,
+        limit=6,
     )
-    async def get_seller_shop_profile(
-        user_id: uuid.UUID,
-        session: SessionDep,
-    ) -> SellerShopProfileRead:
-        user = await crud_user.get_user_by_id(session, user_id)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found",
-            )
+    recent_listings = [
+        await _build_listing_with_images(session, listing)
+        for listing in recent_listings_result
+    ]
 
-        seller = UserPublic.model_validate(user)
-        review_summary = await _get_review_summary(session, user_id)
-
-        recent_listings_result, _ = await crud_listing.search_listings(
-            session,
-            seller_id=str(user_id),
-            status=ListingStatus.ACTIVE,
-            sort_by="newest",
-            skip=0,
-            limit=6,
+    total_active_listings_result = await session.execute(
+        select(func.count()).select_from(Listing).where(
+            Listing.seller_id == user_id,  # type: ignore[arg-type]
+            Listing.status == ListingStatus.ACTIVE,  # type: ignore[arg-type]
         )
-        recent_listings = [
-            await _build_listing_with_images(session, listing)
-            for listing in recent_listings_result
-        ]
+    )
 
-        total_active_listings_result = await session.execute(
-            select(func.count()).select_from(Listing).where(
-                Listing.seller_id == user_id,  # type: ignore[arg-type]
-                Listing.status == ListingStatus.ACTIVE,  # type: ignore[arg-type]
-            )
-        )
-
-        return SellerShopProfileRead(
-            seller=seller,
-            total_active_listings=int(
-                total_active_listings_result.scalar_one()),
-            recent_listings=recent_listings,
-            review_summary=review_summary,
-        )
+    return SellerShopProfileRead(
+        seller=seller,
+            total_active_listings=total_active_listings_result.scalar_one(),
+        recent_listings=recent_listings,
+        review_summary=review_summary,
+    )
 
 
 # ============================================================================

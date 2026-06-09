@@ -307,7 +307,7 @@ async def admin_list_orders(
     if status:
         result = await db.execute(
             select(Order).where(Order.status == status)  # type: ignore[arg-type]
-            .order_by(desc(Order.created_at)).offset(skip).limit(limit)
+            .order_by(desc(Order.created_at)).offset(skip).limit(limit)  # type: ignore[arg-type]
         )
         count_result = await db.execute(
             select(func.count()).select_from(Order)
@@ -315,7 +315,7 @@ async def admin_list_orders(
         )
     else:
         result = await db.execute(
-            select(Order).order_by(desc(Order.created_at)).offset(skip).limit(limit)
+            select(Order).order_by(desc(Order.created_at)).offset(skip).limit(limit)  # type: ignore[arg-type]
         )
         count_result = await db.execute(select(func.count()).select_from(Order))
 

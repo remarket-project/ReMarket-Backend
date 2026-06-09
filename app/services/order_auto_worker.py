@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.core.database import AsyncSessionLocal
+from app.db.session import AsyncSessionLocal
 from app.crud.crud_order import complete_order
 from app.crud.crud_notification import create_notification
 from app.core.websocket_manager import ws_manager
@@ -30,9 +30,9 @@ async def auto_complete_worker():
                 now = datetime.now(timezone.utc)
                 result = await db.execute(
                     select(Order).where(
-                        Order.status == OrderStatus.DELIVERED,
-                        Order.auto_complete_at.isnot(None),
-                        Order.auto_complete_at <= now,
+                        Order.status == OrderStatus.DELIVERED,  # type: ignore[arg-type]
+                        Order.auto_complete_at.isnot(None),  # type: ignore[arg-type]
+                        Order.auto_complete_at <= now,  # type: ignore[operator]
                     )
                 )
                 orders = list(result.scalars().all())

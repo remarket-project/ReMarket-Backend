@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 class Dispute(BaseUUID, table=True):
-    __tablename__ = "disputes"
+    __tablename__ = "disputes" # type: ignore
 
     order_id: uuid.UUID = Field(foreign_key="orders.id", nullable=False, index=True)
     raised_by: uuid.UUID = Field(foreign_key="users.id", nullable=False)
@@ -38,7 +38,7 @@ class Dispute(BaseUUID, table=True):
 
 
 class DisputeEvidence(BaseUUID, table=True):
-    __tablename__ = "dispute_evidence"
+    __tablename__ = "dispute_evidence" # type: ignore
 
     dispute_id: uuid.UUID = Field(foreign_key="disputes.id", nullable=False)
     uploaded_by: uuid.UUID = Field(foreign_key="users.id", nullable=False)

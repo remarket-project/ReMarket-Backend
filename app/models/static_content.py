@@ -10,7 +10,7 @@ def now() -> datetime:
 
 
 class StaticContent(SQLModel, table=True):
-    __tablename__ = "static_contents"
+    __tablename__ = "static_contents" # type: ignore
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     key: str = Field(max_length=100, index=True)

@@ -170,7 +170,7 @@ def init(db_engine: Engine) -> None:
     try:
         with Session(db_engine) as session:
             # Try to create session to check if DB is awake
-            session.exec(text("SELECT 1"))
+            session.exec(text("SELECT 1"))  # type: ignore[arg-type]
             logger.info("Database is ready!")
     except Exception as e:
         logger.error(f"Database not ready: {e}")

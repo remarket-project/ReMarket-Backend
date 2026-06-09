@@ -51,7 +51,7 @@ async def get_user_orders(
     result = await db.execute(
         select(Order)
         .where(base_condition)  # type: ignore[arg-type]
-        .order_by(desc(Order.created_at))
+        .order_by(desc(Order.created_at))  # type: ignore[arg-type]
         .offset(skip)
         .limit(limit)
     )

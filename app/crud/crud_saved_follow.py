@@ -79,11 +79,11 @@ async def get_saved_listings_by_user(
     result = await db.execute(
         select(SavedListing)
         .where(SavedListing.user_id == user_id)  # type: ignore[arg-type]
-        .order_by(desc(SavedListing.saved_at))
+        .order_by(desc(SavedListing.saved_at))  # type: ignore[arg-type]
         .offset(skip)
         .limit(limit)
     )
-    return list(result.scalars().all()), int(total)
+    return list(result.scalars().all()), total
 
 
 async def get_saved_listing_count(db: AsyncSession, listing_id: uuid.UUID) -> int:
@@ -92,7 +92,7 @@ async def get_saved_listing_count(db: AsyncSession, listing_id: uuid.UUID) -> in
             SavedListing.listing_id == listing_id,  # type: ignore[arg-type]
         )
     )
-    return int(result.scalar_one())
+    return result.scalar_one()
 
 
 async def is_following_seller(
@@ -167,11 +167,11 @@ async def get_followed_sellers(
     result = await db.execute(
         select(FollowSeller)
         .where(FollowSeller.follower_id == follower_id)  # type: ignore[arg-type]
-        .order_by(desc(FollowSeller.created_at))
+        .order_by(desc(FollowSeller.created_at))  # type: ignore[arg-type]
         .offset(skip)
         .limit(limit)
     )
-    return list(result.scalars().all()), int(total)
+    return list(result.scalars().all()), total
 
 
 async def get_follower_count(db: AsyncSession, user_id: uuid.UUID) -> int:
@@ -180,7 +180,7 @@ async def get_follower_count(db: AsyncSession, user_id: uuid.UUID) -> int:
             FollowSeller.followee_id == user_id,  # type: ignore[arg-type]
         )
     )
-    return int(result.scalar_one())
+    return result.scalar_one()
 
 
 async def get_following_count(db: AsyncSession, user_id: uuid.UUID) -> int:
@@ -189,4 +189,4 @@ async def get_following_count(db: AsyncSession, user_id: uuid.UUID) -> int:
             FollowSeller.follower_id == user_id,  # type: ignore[arg-type]
         )
     )
-    return int(result.scalar_one())
+    return result.scalar_one()

@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 class Order(BaseUUID, table=True):
-    __tablename__ = "orders"
+    __tablename__ = "orders" # type: ignore
 
     buyer_id: uuid.UUID = Field(foreign_key="users.id", nullable=False, index=True)
     seller_id: uuid.UUID = Field(foreign_key="users.id", nullable=False, index=True)

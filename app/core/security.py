@@ -55,7 +55,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def get_password_hash(password: str) -> str:
     """Hash password before storing in database."""
-    password = str(password)
+    password = password
     # bcrypt supports max 72 bytes; avoid runtime failure by truncating
     raw_bytes = password.encode("utf-8")
     if len(raw_bytes) > 72:

@@ -35,7 +35,7 @@ async def expire_stale_offers(db: AsyncSession) -> int:
         .values(status=OfferStatus.EXPIRED, updated_at=utc_now())
     )
     await db.commit()
-    return int(result.rowcount or 0)
+    return result.rowcount or 0  # type: ignore[return-value]
 
 
 async def create_offer(
@@ -107,7 +107,7 @@ async def get_user_sent_offers(
     result = await db.execute(
         select(Offer)
         .where(Offer.buyer_id == buyer_id)  # type: ignore[arg-type]
-        .order_by(desc(Offer.created_at))
+        .order_by(desc(Offer.created_at))  # type: ignore[arg-type]
         .offset(skip)
         .limit(limit)
     )
@@ -126,7 +126,7 @@ async def get_seller_received_offers(
         select(Offer)
         .join(Listing)
         .where(Listing.seller_id == seller_id)  # type: ignore[arg-type]
-        .order_by(desc(Offer.created_at))
+        .order_by(desc(Offer.created_at))  # type: ignore[arg-type]
         .offset(skip)
         .limit(limit)
     )
@@ -144,7 +144,7 @@ async def get_offers_by_listing(
     result = await db.execute(
         select(Offer)
         .where(Offer.listing_id == listing_id)  # type: ignore[arg-type]
-        .order_by(desc(Offer.created_at))
+        .order_by(desc(Offer.created_at))  # type: ignore[arg-type]
         .offset(skip)
         .limit(limit)
     )

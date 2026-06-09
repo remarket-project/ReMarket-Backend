@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 class Offer(SQLModel, table=True):
     """Offer/negotiation database model."""
 
-    __tablename__ = "offers"
+    __tablename__ = "offers" # type: ignore
 
     __table_args__ = (
         Index(

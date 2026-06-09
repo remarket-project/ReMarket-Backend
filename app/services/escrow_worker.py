@@ -25,7 +25,7 @@ _task: asyncio.Task | None = None
 
 async def _auto_release_worker() -> None:
     """Periodic worker: release escrows + auto-expire return requests."""
-    interval = settings.ESCROW_AUTO_RELEASE_INTERVAL_SECONDS
+    interval = settings.ORDER_AUTO_CHECK_INTERVAL_SECONDS
     while True:
         try:
             async with AsyncSessionLocal() as db:
@@ -34,8 +34,8 @@ async def _auto_release_worker() -> None:
                 result = await db.execute(
                     select(Escrow).where(
                         Escrow.status == EscrowStatus.FUNDED.value,  # type: ignore[arg-type]
-                        Escrow.delivered_at.is_not(None),
-                        Escrow.auto_release_at.is_not(None),
+                        Escrow.delivered_at.is_not(None),  # type: ignore[arg-type]
+                        Escrow.auto_release_at.is_not(None),  # type: ignore[arg-type]
                         Escrow.auto_release_at <= now,  # type: ignore[operator]
                     )
                 )
@@ -75,7 +75,7 @@ async def _auto_release_worker() -> None:
         await asyncio.sleep(interval)
 
 
-async def _release_escrow(db: "AsyncSessionLocal", escrow: Escrow) -> None:
+async def _release_escrow(db: AsyncSessionLocal, escrow: Escrow) -> None:  # type: ignore[arg-type]
     """Release a single escrow to seller."""
     try:
         await crud_wallet.transfer_locked_to_user(
@@ -86,11 +86,7 @@ async def _release_escrow(db: "AsyncSessionLocal", escrow: Escrow) -> None:
             order_id=escrow.order_id,
             description=f"Auto-release escrow {escrow.id}",
         )
-        await crud_escrow.update_escrow_status(
-            db=db,
-            escrow_id=escrow.id,
-            new_status=EscrowStatus.RELEASED,
-        )
+        escrow.status = EscrowStatus.RELEASED.value
         escrow.released_at = datetime.now(timezone.utc)
         escrow.release_trigger = "auto"
         escrow.updated_at = datetime.now(timezone.utc)
@@ -103,7 +99,7 @@ async def _release_escrow(db: "AsyncSessionLocal", escrow: Escrow) -> None:
 def schedule_auto_release(escrow: Escrow) -> None:
     """Set auto_release_at after GHN confirms delivery.
     Called when escrow.delivered_at is set."""
-    period = timedelta(days=settings.ESCROW_DISPUTE_PERIOD_DAYS)
+    period = timedelta(hours=settings.ORDER_AUTO_COMPLETE_HOURS)
     escrow.auto_release_at = datetime.now(timezone.utc) + period
     escrow.release_trigger = "auto"
 

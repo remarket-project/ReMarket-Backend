@@ -43,7 +43,7 @@ async def get_conversation_by_listing_and_user(
             ChatConversation.listing_id == listing_id,  # type: ignore[arg-type]
             ConversationParticipant.user_id == user_id,  # type: ignore[arg-type]
         )
-        .order_by(desc(ChatConversation.created_at))
+        .order_by(desc(ChatConversation.created_at))  # type: ignore[arg-type]
     )
     return result.scalar_one_or_none()
 
@@ -73,11 +73,11 @@ async def get_user_conversations(
             ConversationParticipant.conversation_id == ChatConversation.id,  # type: ignore[arg-type]
         )
         .where(ConversationParticipant.user_id == user_id)  # type: ignore[arg-type]
-        .order_by(desc(ChatConversation.created_at))
+        .order_by(desc(ChatConversation.created_at))  # type: ignore[arg-type]
         .offset(skip)
         .limit(limit)
     )
-    return list(result.scalars().unique().all()), int(total)
+    return list(result.scalars().unique().all()), total
 
 
 async def get_conversation_participants(
@@ -87,7 +87,7 @@ async def get_conversation_participants(
     result = await db.execute(
         select(ConversationParticipant)
         .where(ConversationParticipant.conversation_id == conversation_id)  # type: ignore[arg-type]
-        .order_by(asc(ConversationParticipant.joined_at))
+        .order_by(asc(ConversationParticipant.joined_at))  # type: ignore[arg-type]
     )
     return list(result.scalars().all())
 
@@ -155,6 +155,6 @@ async def get_conversation_messages(
     result = await db.execute(
         select(Message)
         .where(Message.conversation_id == conversation_id)  # type: ignore[arg-type]
-        .order_by(asc(Message.created_at))
+        .order_by(asc(Message.created_at))  # type: ignore[arg-type]
     )
     return list(result.scalars().all())

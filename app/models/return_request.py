@@ -29,7 +29,7 @@ class ReturnStatus(str, Enum):
 
 
 class ReturnRequest(SQLModel, table=True):
-    __tablename__ = "return_requests"
+    __tablename__ = "return_requests" # type: ignore
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     order_id: uuid.UUID = Field(foreign_key="orders.id", index=True)

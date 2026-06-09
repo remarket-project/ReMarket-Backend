@@ -10,7 +10,7 @@ def now() -> datetime:
 
 
 class SavedListing(SQLModel, table=True):
-    __tablename__ = "saved_listings"
+    __tablename__ = "saved_listings" # type: ignore 
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     user_id: uuid.UUID = Field(foreign_key="users.id")
@@ -19,7 +19,7 @@ class SavedListing(SQLModel, table=True):
 
 
 class FollowSeller(SQLModel, table=True):
-    __tablename__ = "follow_sellers"
+    __tablename__ = "follow_sellers" # type: ignore
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     follower_id: uuid.UUID = Field(foreign_key="users.id")

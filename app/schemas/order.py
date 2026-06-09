@@ -8,7 +8,7 @@ from app.models.enums import OrderStatus, PaymentMethod
 
 
 class OrderBase(BaseModel):
-    final_price: Decimal = Field(..., gt=0, decimal_places=2)
+    final_price: Decimal = Field(..., gt=Decimal("0"), decimal_places=2)
 
 
 class OrderCreate(OrderBase):

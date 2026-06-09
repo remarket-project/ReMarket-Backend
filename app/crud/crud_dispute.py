@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.models.dispute import Dispute, DisputeEvidence
-from app.models.enums import EscrowStatus, OrderStatus
+from app.models.enums import EscrowStatus, ListingStatus, OrderStatus
 from app.models.escrow import Escrow
 from app.models.listing import Listing
 from app.models.order import Order
@@ -32,7 +32,7 @@ async def create_dispute(
 
     # Set order status to DISPUTED
     order_result = await db.execute(
-        select(Order).where(Order.id == order_id).with_for_update()
+        select(Order).where(Order.id == order_id).with_for_update()  # type: ignore[arg-type]
     )
     order = order_result.scalar_one_or_none()
     if order and order.status in (OrderStatus.DELIVERED, OrderStatus.SHIPPING):
@@ -66,7 +66,7 @@ async def add_evidence(
 async def get_dispute_by_id(db: AsyncSession, dispute_id: uuid.UUID) -> Dispute | None:
     """Get dispute by ID."""
     result = await db.execute(
-        select(Dispute).where(Dispute.id == dispute_id)
+        select(Dispute).where(Dispute.id == dispute_id)  # type: ignore[arg-type]
     )
     return result.scalar_one_or_none()
 
@@ -74,7 +74,7 @@ async def get_dispute_by_id(db: AsyncSession, dispute_id: uuid.UUID) -> Dispute 
 async def get_dispute_by_order(db: AsyncSession, order_id: uuid.UUID) -> Dispute | None:
     """Get dispute for an order (if exists)."""
     result = await db.execute(
-        select(Dispute).where(Dispute.order_id == order_id)
+        select(Dispute).where(Dispute.order_id == order_id)  # type: ignore[arg-type]
     )
     return result.scalar_one_or_none()
 
@@ -84,7 +84,7 @@ async def get_evidence_for_dispute(
 ) -> list[DisputeEvidence]:
     """Get all evidence images for a dispute."""
     result = await db.execute(
-        select(DisputeEvidence).where(DisputeEvidence.dispute_id == dispute_id)
+        select(DisputeEvidence).where(DisputeEvidence.dispute_id == dispute_id)  # type: ignore[arg-type]
     )
     return list(result.scalars().all())
 
@@ -105,7 +105,7 @@ async def resolve_dispute(
     from app.crud.crud_wallet import transfer_locked_to_user, unlock_balance
 
     result = await db.execute(
-        select(Dispute).where(Dispute.id == dispute_id).with_for_update()
+        select(Dispute).where(Dispute.id == dispute_id).with_for_update()  # type: ignore[arg-type]
     )
     dispute = result.scalar_one_or_none()
     if not dispute:
@@ -123,13 +123,13 @@ async def resolve_dispute(
 
     # Get order
     order_result = await db.execute(
-        select(Order).where(Order.id == dispute.order_id).with_for_update()
+        select(Order).where(Order.id == dispute.order_id).with_for_update()  # type: ignore[arg-type]
     )
     order = order_result.scalar_one_or_none()
 
     # Get escrow
     escrow_result = await db.execute(
-        select(Escrow).where(Escrow.order_id == dispute.order_id).with_for_update()
+        select(Escrow).where(Escrow.order_id == dispute.order_id).with_for_update()  # type: ignore[arg-type]
     )
     escrow = escrow_result.scalar_one_or_none()
 
@@ -158,7 +158,7 @@ async def resolve_dispute(
             db.add(order)
             # Revert listing to ACTIVE
             listing_result = await db.execute(
-                select(Listing).where(Listing.id == order.listing_id).with_for_update()
+                select(Listing).where(Listing.id == order.listing_id).with_for_update()  # type: ignore[arg-type]
             )
             listing = listing_result.scalar_one_or_none()
             if listing:
@@ -196,14 +196,14 @@ async def list_disputes(
     count_query = select(func.count()).select_from(Dispute)
 
     if status:
-        query = query.where(Dispute.status == status)
-        count_query = count_query.where(Dispute.status == status)
+        query = query.where(Dispute.status == status)  # type: ignore[arg-type]
+        count_query = count_query.where(Dispute.status == status)  # type: ignore[arg-type]
 
     total_result = await db.execute(count_query)
     total = total_result.scalar_one()
 
     result = await db.execute(
-        query.order_by(desc(Dispute.created_at)).offset(skip).limit(limit)
+        query.order_by(desc(Dispute.created_at)).offset(skip).limit(limit)  # type: ignore[arg-type]
     )
     disputes = list(result.scalars().all())
 

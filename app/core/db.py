@@ -3,7 +3,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from app.core.config import settings
 
 # Synchronous engine used by tests and some startup scripts
-engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
+engine = create_engine(settings.SQLALCHEMY_DATABASE_URI)
 
 
 def init_db(session: Session) -> None:

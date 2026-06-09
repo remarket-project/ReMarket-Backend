@@ -16,7 +16,7 @@ from .enums import NotificationType
 class Notification(SQLModel, table=True):
     """Notification database model."""
 
-    __tablename__ = "notifications"
+    __tablename__ = "notifications" # type: ignore
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE")

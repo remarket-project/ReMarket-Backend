@@ -50,7 +50,7 @@ def _create_signature(data: dict) -> str:
     sorted_data = _sort_obj(data)
     raw = urlencode(sorted_data)
     return hmac.new(
-        settings.PAYOS_CHECKSUM_KEY.encode(),
+        settings.PAYOS_CHECKSUM_KEY.encode(),  # type: ignore[arg-type]
         raw.encode(),
         hashlib.sha256,
     ).hexdigest()
@@ -65,14 +65,14 @@ def verify_webhook(data: dict, signature: str) -> bool:
 # ---------------------------------------------------------------------------
 
 async def _post(path: str, body: dict) -> dict[str, Any]:
-    url = f"{settings.PAYOS_API_URL}{path}"
+    url = f"{settings.PAYOS_API_URL}{path}"  # type: ignore[arg-type]
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(
             url,
             json=body,
             headers={
-                "x-client-id": settings.PAYOS_CLIENT_ID,
-                "x-api-key": settings.PAYOS_API_KEY,
+                "x-client-id": settings.PAYOS_CLIENT_ID,  # type: ignore[arg-type]
+                "x-api-key": settings.PAYOS_API_KEY,  # type: ignore[arg-type]
                 "Content-Type": "application/json",
             },
         )
@@ -84,13 +84,13 @@ async def _post(path: str, body: dict) -> dict[str, Any]:
 
 
 async def _get(path: str) -> dict[str, Any]:
-    url = f"{settings.PAYOS_API_URL}{path}"
+    url = f"{settings.PAYOS_API_URL}{path}"  # type: ignore[arg-type]
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(
             url,
             headers={
-                "x-client-id": settings.PAYOS_CLIENT_ID,
-                "x-api-key": settings.PAYOS_API_KEY,
+                "x-client-id": settings.PAYOS_CLIENT_ID,  # type: ignore[arg-type]
+                "x-api-key": settings.PAYOS_API_KEY,  # type: ignore[arg-type]
             },
         )
         resp.raise_for_status()
@@ -136,8 +136,8 @@ async def create_payment_link(
         "orderCode": int(order_code.replace("-", "")[:18]),
         "amount": amount,
         "description": description[:25],
-        "cancelUrl": cancel_url or f"{settings.FRONTEND_URL}/payment/cancel",
-        "returnUrl": return_url or f"{settings.FRONTEND_URL}/payment/success",
+        "cancelUrl": cancel_url or f"{settings.FRONTEND_HOST}/payment/cancel",
+        "returnUrl": return_url or f"{settings.FRONTEND_HOST}/payment/success",
     }
     if buyer_name:
         body["buyerName"] = buyer_name
@@ -177,11 +177,11 @@ def confirm_webhook(webhook_url: str) -> bool:
     """
     import httpx as sync_httpx
     resp = sync_httpx.post(
-        f"{settings.PAYOS_API_URL}/confirm-webhook",
+        f"{settings.PAYOS_API_URL}/confirm-webhook",  # type: ignore[arg-type]
         json={"webhookUrl": webhook_url},
         headers={
-            "x-client-id": settings.PAYOS_CLIENT_ID,
-            "x-api-key": settings.PAYOS_API_KEY,
+            "x-client-id": settings.PAYOS_CLIENT_ID,  # type: ignore[arg-type]
+            "x-api-key": settings.PAYOS_API_KEY,  # type: ignore[arg-type]
             "Content-Type": "application/json",
         },
     )

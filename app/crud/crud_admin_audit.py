@@ -50,6 +50,6 @@ async def get_admin_audit_logs(
 
     total = (await db.execute(count_query)).scalar_one()
     result = await db.execute(
-        query.order_by(desc(AdminAuditLog.created_at)).offset(skip).limit(limit)
+        query.order_by(desc(AdminAuditLog.created_at)).offset(skip).limit(limit)  # type: ignore[arg-type]
     )
-    return list(result.scalars().all()), int(total)
+    return list(result.scalars().all()), total

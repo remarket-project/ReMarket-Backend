@@ -15,8 +15,8 @@ class WalletTopupRequest(BaseModel):
     """Request body for demo topup."""
     amount: Decimal = Field(
         ...,
-        gt=0,
-        le=10000000,
+        gt=Decimal("0"),
+        le=Decimal("10000000"),
         decimal_places=2,
         description="Amount to add (max 10,000,000 VND)"
     )

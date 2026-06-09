@@ -8,7 +8,7 @@ from app.models.enums import OfferStatus
 
 
 class OfferBase(BaseModel):
-    offer_price: Decimal = Field(..., gt=0, decimal_places=2,
+    offer_price: Decimal = Field(..., gt=Decimal("0"), decimal_places=2,
                                  description="The price offered by the buyer")
 
 
@@ -33,7 +33,7 @@ class OfferStatusUpdate(BaseModel):
     status: OfferStatus = Field(
         ..., description="New status for the offer (ACCEPTED, REJECTED, COUNTERED)")
     offer_price: Decimal | None = Field(
-        default=None, gt=0, decimal_places=2)
+        default=None, gt=Decimal("0"), decimal_places=2)
 
 
 class OfferReadWithDetails(OfferRead):

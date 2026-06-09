@@ -10,7 +10,7 @@ def now() -> datetime:
 
 
 class AdminAuditLog(SQLModel, table=True):
-    __tablename__ = "admin_audit_logs"
+    __tablename__ = "admin_audit_logs" # type: ignore
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     admin_id: uuid.UUID = Field(foreign_key="users.id")

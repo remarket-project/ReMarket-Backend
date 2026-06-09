@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
@@ -390,13 +390,13 @@ async def update_order_status(
 
     # Update order status
     order.status = data.status
-    order.updated_at = datetime.utcnow()
+    order.updated_at = datetime.now(timezone.utc)
     db.add(order)
 
     # If DELIVERED, set auto-complete timer
     if data.status == OrderStatus.DELIVERED:
         from datetime import timedelta
-        order.delivered_at_record = datetime.utcnow()
+        order.delivered_at_record = datetime.now(timezone.utc)
         order.auto_complete_at = order.delivered_at_record + timedelta(hours=settings.ORDER_AUTO_COMPLETE_HOURS)
 
     await db.commit()

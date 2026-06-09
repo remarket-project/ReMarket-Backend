@@ -47,7 +47,7 @@ async def list_categories(
     categories = await crud_category.get_all_categories(session, skip=skip, limit=limit)
     count = await crud_category.get_categories_count(session)
 
-    return CategoriesPublic(data=categories, count=count)
+    return CategoriesPublic(data=[CategoryPublic.model_validate(c) for c in categories], count=count)
 
 
 # ============================================================================
@@ -68,7 +68,7 @@ async def get_root_categories(session: SessionDep) -> list[CategoryPublic]:
     - List of categories
     """
     categories = await crud_category.get_all_categories(session, skip=0, limit=1000)
-    return categories
+    return [CategoryPublic.model_validate(c) for c in categories]
 
 
 # ============================================================================
@@ -101,7 +101,7 @@ async def get_category_by_slug(slug: str, session: SessionDep) -> CategoryPublic
             detail="Category not found"
         )
 
-    return category
+    return CategoryPublic.model_validate(category)
 
 
 # ============================================================================
@@ -137,7 +137,7 @@ async def get_category_by_id(
             detail="Category not found"
         )
 
-    return category
+    return CategoryPublic.model_validate(category)
 
 
 # ============================================================================
@@ -154,7 +154,7 @@ async def get_category_by_id(
 async def create_category(
     data: CategoryCreate,
     session: SessionDep,
-    current_admin=Depends(CurrentAdmin)
+    current_admin: CurrentAdmin
 ) -> CategoryPublic:
     """
     Create a new category (admin only).
@@ -182,7 +182,7 @@ async def create_category(
 
     # Create category
     category = await crud_category.create_category(session, data)
-    return category
+    return CategoryPublic.model_validate(category)
 
 
 # ============================================================================
@@ -199,7 +199,7 @@ async def update_category(
     category_id: uuid.UUID,
     data: CategoryUpdate,
     session: SessionDep,
-    current_admin=Depends(CurrentAdmin)
+    current_admin: CurrentAdmin
 ) -> CategoryPublic:
     """
     Update category (admin only).
@@ -228,7 +228,7 @@ async def update_category(
         )
 
     updated = await crud_category.update_category(session, category_id, data)
-    return updated
+    return CategoryPublic.model_validate(updated)
 
 
 # ============================================================================
@@ -244,7 +244,7 @@ async def update_category(
 async def delete_category(
     category_id: uuid.UUID,
     session: SessionDep,
-    current_admin=Depends(CurrentAdmin)
+    current_admin: CurrentAdmin
 ) -> None:
     """
     Delete category (admin only).

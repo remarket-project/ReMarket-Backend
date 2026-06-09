@@ -218,7 +218,7 @@ def init_db_data() -> None:
                 email=settings.FIRST_SUPERUSER,
                 full_name="Admin",
                 password_hash=get_password_hash(
-                    settings.FIRST_SUPERUSER_PASSWORD),
+                    settings.FIRST_SUPERUSER_PASSWORD or ""),
                 role=UserRole.ADMIN,
                 is_active=True,
                 is_email_verified=True,

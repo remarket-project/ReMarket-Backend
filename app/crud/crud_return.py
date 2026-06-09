@@ -36,7 +36,7 @@ async def get_returns_for_seller(
     result = await db.execute(
         select(ReturnRequest)
         .where(ReturnRequest.seller_id == seller_id)  # type: ignore[arg-type]
-        .order_by(desc(ReturnRequest.created_at))
+        .order_by(desc(ReturnRequest.created_at))  # type: ignore[arg-type]
         .offset(skip)
         .limit(limit)
     )
@@ -57,7 +57,7 @@ async def get_returns_for_buyer(
     result = await db.execute(
         select(ReturnRequest)
         .where(ReturnRequest.buyer_id == buyer_id)  # type: ignore[arg-type]
-        .order_by(desc(ReturnRequest.created_at))
+        .order_by(desc(ReturnRequest.created_at))  # type: ignore[arg-type]
         .offset(skip)
         .limit(limit)
     )
@@ -77,7 +77,7 @@ async def get_all_returns(
 
     result = await db.execute(
         select(ReturnRequest)
-        .order_by(desc(ReturnRequest.created_at))
+        .order_by(desc(ReturnRequest.created_at))  # type: ignore[arg-type]
         .offset(skip)
         .limit(limit)
     )

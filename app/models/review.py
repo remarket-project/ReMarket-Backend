@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 class Review(SQLModel, table=True):
     """Review database model."""
 
-    __tablename__ = "reviews"
+    __tablename__ = "reviews" # type: ignore
     __table_args__ = (
         UniqueConstraint(
             "order_id", "reviewer_id", name="uq_review_order_reviewer"

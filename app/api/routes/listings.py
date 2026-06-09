@@ -422,6 +422,8 @@ async def upload_listing_image(
     if settings.use_minio:
         try:
             minio_service = get_minio_service()
+            if not minio_service:
+                raise RuntimeError("MinIO service not available")
             file_path = f"listings/{str(listing_id)}/{unique_filename}"
             image_url = minio_service.upload_file(
                 file_path,

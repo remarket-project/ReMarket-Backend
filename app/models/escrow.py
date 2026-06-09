@@ -23,7 +23,7 @@ def get_datetime_utc() -> datetime:
 class Escrow(SQLModel, table=True):
     """Escrow account model (simplified)."""
 
-    __tablename__ = "escrows"
+    __tablename__ = "escrows" # type: ignore
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     order_id: uuid.UUID = Field(
@@ -36,10 +36,10 @@ class Escrow(SQLModel, table=True):
     seller_wallet_id: uuid.UUID = Field(foreign_key="wallets.id", index=True)
 
     # Timestamps
-    funded_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
-    released_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
-    created_at: datetime = Field(default_factory=get_datetime_utc, sa_type=DateTime(timezone=True))
-    updated_at: datetime = Field(default_factory=get_datetime_utc, sa_type=DateTime(timezone=True))
+    funded_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True)) # type: ignore
+    released_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True)) # type: ignore
+    created_at: datetime = Field(default_factory=get_datetime_utc, sa_type=DateTime(timezone=True)) # type: ignore
+    updated_at: datetime = Field(default_factory=get_datetime_utc, sa_type=DateTime(timezone=True)) # type: ignore
 
     # Relationships
     order: Optional["Order"] = Relationship(back_populates="escrow")

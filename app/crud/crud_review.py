@@ -52,7 +52,7 @@ async def get_reviews_by_order(
     result = await db.execute(
         select(Review)
         .where(Review.order_id == order_id)  # type: ignore[arg-type]
-        .order_by(asc(Review.created_at))
+        .order_by(asc(Review.created_at))  # type: ignore[arg-type]
     )
     return list(result.scalars().all())
 
@@ -134,7 +134,7 @@ async def get_user_reviews(
     result = await db.execute(
         select(Review)
         .where(Review.reviewee_id == user_id)  # type: ignore[arg-type]
-        .order_by(desc(Review.created_at))
+        .order_by(desc(Review.created_at))  # type: ignore[arg-type]
         .offset(skip)
         .limit(limit)
     )

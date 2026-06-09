@@ -131,7 +131,7 @@ class UpdatePassword(SQLModel):
 class User(UserBase, table=True):
     """User database model."""
 
-    __tablename__ = "users"
+    __tablename__ = "users" # type: ignore
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     password_hash: str = Field(max_length=255)

@@ -29,7 +29,7 @@ class ListingBase(SQLModel):
 
 
 class Listing(ListingBase, table=True):
-    __tablename__ = "listings"
+    __tablename__ = "listings" # type: ignore
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     seller_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE")
@@ -72,7 +72,7 @@ class ListingImageBase(SQLModel):
 
 
 class ListingImage(ListingImageBase, table=True):
-    __tablename__ = "listing_images"
+    __tablename__ = "listing_images" # type: ignore
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     listing_id: uuid.UUID = Field(

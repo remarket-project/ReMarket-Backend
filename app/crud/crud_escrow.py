@@ -17,13 +17,13 @@ from app.models.escrow import Escrow
 
 async def get_escrow_by_id(db: AsyncSession, escrow_id: uuid.UUID) -> Escrow | None:
     """Get escrow by ID."""
-    result = await db.execute(select(Escrow).where(Escrow.id == escrow_id))
+    result = await db.execute(select(Escrow).where(Escrow.id == escrow_id))  # type: ignore[arg-type]
     return result.scalar_one_or_none()
 
 
 async def get_escrow_by_order_id(db: AsyncSession, order_id: uuid.UUID) -> Escrow | None:
     """Get escrow by order ID."""
-    result = await db.execute(select(Escrow).where(Escrow.order_id == order_id))
+    result = await db.execute(select(Escrow).where(Escrow.order_id == order_id))  # type: ignore[arg-type]
     return result.scalar_one_or_none()
 
 
@@ -51,7 +51,7 @@ async def create_escrow(
 async def fund_escrow(db: AsyncSession, escrow_id: uuid.UUID) -> Escrow | None:
     """Mark escrow as funded by buyer."""
     result = await db.execute(
-        select(Escrow).where(Escrow.id == escrow_id).with_for_update(nowait=False)
+        select(Escrow).where(Escrow.id == escrow_id).with_for_update(nowait=False)  # type: ignore[arg-type]
     )
     escrow = result.scalar_one_or_none()
     if not escrow:
@@ -70,7 +70,7 @@ async def fund_escrow(db: AsyncSession, escrow_id: uuid.UUID) -> Escrow | None:
 async def refund_escrow(db: AsyncSession, escrow_id: uuid.UUID) -> Escrow | None:
     """Refund escrow (return funds to buyer)."""
     result = await db.execute(
-        select(Escrow).where(Escrow.id == escrow_id).with_for_update(nowait=False)
+        select(Escrow).where(Escrow.id == escrow_id).with_for_update(nowait=False)  # type: ignore[arg-type]
     )
     escrow = result.scalar_one_or_none()
     if not escrow:

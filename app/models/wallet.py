@@ -27,7 +27,7 @@ def get_datetime_utc() -> datetime:
 class Wallet(SQLModel, table=True):
     """User wallet model."""
 
-    __tablename__ = "wallets"
+    __tablename__ = "wallets" # type: ignore
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     user_id: uuid.UUID = Field(
@@ -70,7 +70,7 @@ class Wallet(SQLModel, table=True):
 class WalletTransaction(SQLModel, table=True):
     """Wallet transaction history model."""
 
-    __tablename__ = "wallet_transactions"
+    __tablename__ = "wallet_transactions" # type: ignore
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     wallet_id: uuid.UUID = Field(

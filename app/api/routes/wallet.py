@@ -26,7 +26,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 
 class WithdrawRequest(BaseModel):
-    amount: Decimal = Field(..., gt=0, decimal_places=2)
+    amount: Decimal = Field(..., gt=Decimal(0), decimal_places=2)
 
 
 class WithdrawResponse(BaseModel):
@@ -51,7 +51,7 @@ async def get_my_wallet(
     Auto-creates wallet if it doesn't exist.
     """
     wallet = await crud_wallet.get_or_create_wallet(db, current_user.id)
-    return wallet
+    return WalletRead.model_validate(wallet)
 
 
 # ============================================================================
@@ -85,7 +85,7 @@ async def demo_topup(
             detail=str(e)
         ) from e
 
-    return updated_wallet
+    return WalletRead.model_validate(updated_wallet)
 
 
 # ============================================================================
