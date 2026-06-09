@@ -8,7 +8,7 @@ from app.core.email import send_email
 from app.models.order import Order
 from app.models.user import User
 
-TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
+TEMPLATES_DIR = Path(__file__).parent.parent / "email-templates"
 _env = Environment(
     loader=FileSystemLoader(str(TEMPLATES_DIR)),
     autoescape=select_autoescape(["html", "xml"]),

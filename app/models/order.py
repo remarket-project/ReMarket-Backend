@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
+from sqlalchemy import Column, DateTime
 from sqlmodel import Field, Relationship
 
 from app.models.base import BaseUUID
@@ -37,8 +38,12 @@ class Order(BaseUUID, table=True):
     shipping_service_type: int | None = None
     shipping_fee: Decimal | None = None
     tracking_number: str | None = None
-    expected_delivery_at: datetime | None = None
-    delivered_at: datetime | None = None
+    expected_delivery_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
+    delivered_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
 
     # Shipping address (text)
     shipping_name: str | None = None
@@ -55,13 +60,27 @@ class Order(BaseUUID, table=True):
     shipping_ward_code: str | None = None
 
     # Auto-complete timer
-    delivered_at_record: datetime | None = None          # Thời gian admin bấm DELIVERED
-    auto_complete_at: datetime | None = None             # Tự động COMPLETED sau 48h
+    delivered_at_record: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
+    auto_complete_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
 
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(
+        sa_column=Column(
+            DateTime(timezone=True),
+            nullable=False,
+            default=lambda: datetime.now(timezone.utc),
+        )
+    )
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        sa_column_kwargs={"onupdate": lambda: datetime.now(timezone.utc)},
+        sa_column=Column(
+            DateTime(timezone=True),
+            nullable=False,
+            default=lambda: datetime.now(timezone.utc),
+            onupdate=lambda: datetime.now(timezone.utc),
+        )
     )
 
     # Relationships
