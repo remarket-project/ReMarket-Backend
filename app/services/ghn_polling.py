@@ -55,7 +55,7 @@ async def poll_ghn_status():
                             order.status = new_status
 
                             if new_status == OrderStatus.DELIVERED:
-                                order.delivered_at = datetime.now(timezone.utc)
+                                order.delivered_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
                             db.add(order)
                             await db.commit()

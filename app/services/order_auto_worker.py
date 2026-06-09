@@ -27,7 +27,7 @@ async def auto_complete_worker():
     while True:
         try:
             async with AsyncSessionLocal() as db:
-                now = datetime.now(timezone.utc)
+                now = datetime.now(timezone.utc).replace(tzinfo=None)
                 result = await db.execute(
                     select(Order).where(
                         Order.status == OrderStatus.DELIVERED,  # type: ignore[arg-type]

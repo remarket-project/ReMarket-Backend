@@ -186,7 +186,10 @@ class User(UserBase, table=True):
         cascade_delete=True,
         sa_relationship_kwargs={"foreign_keys": "Review.reviewee_id"}
     )
-    disputes_raised: list["Dispute"] = Relationship(back_populates="raiser")
+    disputes_raised: list["Dispute"] = Relationship(
+        back_populates="raiser",
+        sa_relationship_kwargs={"foreign_keys": "Dispute.raised_by"},
+    )
 
 
 # ============================================================================

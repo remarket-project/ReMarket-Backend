@@ -3,11 +3,18 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import jwt
-from passlib.context import CryptContext
+from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
+from pwdlib.hashers.bcrypt import BcryptHasher
 
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
+pwd_context = PasswordHash(
+    hashers=[
+        Argon2Hasher(),
+        BcryptHasher(),
+    ]
+)
 
 ALGORITHM = "HS256"
 
@@ -48,15 +55,23 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+def verify_and_update_password(plain_password: str, hashed_password: str) -> tuple[bool, str | None]:
+    """Verify password and return whether it is valid, and optionally a new hash to upgrade to."""
+    try:
+        return pwd_context.verify_and_update(plain_password, hashed_password)
+    except Exception:
+        return False, None
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify that input password matches stored hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    return verify_and_update_password(plain_password, hashed_password)[0]
 
 
 def get_password_hash(password: str) -> str:
     """Hash password before storing in database."""
     password = password
-    # bcrypt supports max 72 bytes; avoid runtime failure by truncating
+    # bcrypt/argon2 supports max 72 bytes; avoid runtime failure by truncating
     raw_bytes = password.encode("utf-8")
     if len(raw_bytes) > 72:
         password = raw_bytes[:72].decode("utf-8", errors="ignore")

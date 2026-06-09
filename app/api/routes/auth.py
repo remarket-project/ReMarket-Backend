@@ -26,6 +26,7 @@ from app.core.security import (
     get_password_hash,
     verify_password,
     verify_token_hash,
+    verify_and_update_password,
 )
 from app.crud import crud_user
 from app.models import UserRegister
@@ -159,12 +160,16 @@ async def login(request: Request, session: SessionDep, credentials: Annotated[OA
         )
 
     # Verify password
-    is_valid = verify_password(credentials.password, user.password_hash)
+    is_valid, new_hash = verify_and_update_password(credentials.password, user.password_hash)
     if not is_valid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password"
         )
+    if new_hash:
+        user.password_hash = new_hash
+        session.add(user)
+        await session.commit()
 
     # Generate tokens
     access_token_expires = timedelta(

@@ -204,7 +204,14 @@ async def _handle_payment_succeeded(
 ) -> None:
     """Handle payment_intent.succeeded — credit the wallet."""
     metadata = payment_intent.metadata
-    wallet_id = metadata.get("wallet_id") if isinstance(metadata, dict) else None
+    wallet_id = None
+    if metadata:
+        if isinstance(metadata, dict):
+            wallet_id = metadata.get("wallet_id")
+        elif hasattr(metadata, "to_dict"):
+            wallet_id = metadata.to_dict().get("wallet_id")
+        else:
+            wallet_id = getattr(metadata, "wallet_id", None)
     if not wallet_id:
         logger.error("No wallet_id in PaymentIntent %s metadata", payment_intent.id)
         return

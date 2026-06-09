@@ -34,7 +34,10 @@ class Dispute(BaseUUID, table=True):
     # Relationships
     order: "Order" = Relationship(back_populates="disputes")
     evidence: list["DisputeEvidence"] = Relationship(back_populates="dispute", cascade_delete=True)
-    raiser: "User" = Relationship(back_populates="disputes_raised")
+    raiser: "User" = Relationship(
+        back_populates="disputes_raised",
+        sa_relationship_kwargs={"foreign_keys": "Dispute.raised_by"},
+    )
 
 
 class DisputeEvidence(BaseUUID, table=True):

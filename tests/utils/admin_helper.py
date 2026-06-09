@@ -152,12 +152,19 @@ async def create_test_order_and_escrow(
         buyer_wallet_id=buyer_wallet.id,
         seller_wallet_id=seller_wallet.id,
     )
-    if escrow_status == EscrowStatus.DISPUTED:
-        escrow.dispute_reason = "Test dispute reason"
-        escrow.dispute_opened_at = datetime.now(timezone.utc)
-
     db.add(escrow)
     await db.commit()
     await db.refresh(escrow)
+
+    if escrow_status == EscrowStatus.DISPUTED:
+        from app.models.dispute import Dispute
+        dispute = Dispute(
+            order_id=order.id,
+            raised_by=buyer.id,
+            reason="Test dispute reason",
+            status="open",
+        )
+        db.add(dispute)
+        await db.commit()
 
     return order, escrow

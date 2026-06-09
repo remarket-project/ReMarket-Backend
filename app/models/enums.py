@@ -107,3 +107,4 @@ class EscrowStatus(str, Enum):
     FUNDED = "funded"              # Đã fund
     RELEASED = "released"          # Đã giải ngân cho seller
     REFUNDED = "refunded"          # Hoàn tiền cho buyer
+    DISPUTED = "disputed"          # Đang tranh chấp

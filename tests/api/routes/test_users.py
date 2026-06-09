@@ -19,7 +19,7 @@ def test_get_users_superuser_me(
     current_user = r.json()
     assert current_user
     assert current_user["is_active"] is True
-    assert current_user["is_superuser"]
+    assert current_user["role"] == "admin"
     assert current_user["email"] == settings.FIRST_SUPERUSER
 
 
@@ -30,7 +30,7 @@ def test_get_users_normal_user_me(
     current_user = r.json()
     assert current_user
     assert current_user["is_active"] is True
-    assert current_user["is_superuser"] is False
+    assert current_user["role"] == "user"
     assert current_user["email"] == settings.EMAIL_TEST_USER
 
 
@@ -90,7 +90,7 @@ def test_get_non_existing_user_as_superuser(
 def test_get_existing_user_current_user(client: TestClient, db: Session) -> None:
     username = random_email()
     password = random_lower_string()
-    user_in = UserCreate(email=username, password=password)
+    user_in = UserCreate(email=username, password=password, is_email_verified=True)
     user = crud.create_user(session=db, user_create=user_in)
     user_id = user.id
 
@@ -98,7 +98,7 @@ def test_get_existing_user_current_user(client: TestClient, db: Session) -> None
         "username": username,
         "password": password,
     }
-    r = client.post(f"{settings.API_V1_STR}/login/access-token", data=login_data)
+    r = client.post(f"{settings.API_V1_STR}/auth/login", data=login_data)
     tokens = r.json()
     a_token = tokens["access_token"]
     headers = {"Authorization": f"Bearer {a_token}"}
@@ -420,7 +420,7 @@ def test_update_user_email_exists(
 def test_delete_user_me(client: TestClient, db: Session) -> None:
     username = random_email()
     password = random_lower_string()
-    user_in = UserCreate(email=username, password=password)
+    user_in = UserCreate(email=username, password=password, is_email_verified=True)
     user = crud.create_user(session=db, user_create=user_in)
     user_id = user.id
 
@@ -428,7 +428,7 @@ def test_delete_user_me(client: TestClient, db: Session) -> None:
         "username": username,
         "password": password,
     }
-    r = client.post(f"{settings.API_V1_STR}/login/access-token", data=login_data)
+    r = client.post(f"{settings.API_V1_STR}/auth/login", data=login_data)
     tokens = r.json()
     a_token = tokens["access_token"]
     headers = {"Authorization": f"Bearer {a_token}"}

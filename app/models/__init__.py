@@ -11,6 +11,7 @@ from app.models.category import (
 )
 from app.models.chat import ChatConversation, ConversationParticipant
 from app.models.chat import Message as ChatMessage
+from app.models.dispute import Dispute, DisputeEvidence
 from app.models.enums import (
     ConditionGrade,
     EscrowStatus,
@@ -86,6 +87,8 @@ __all__ = [
     "Wallet",
     "WalletTransaction",
     "Escrow",
+    "Dispute",
+    "DisputeEvidence",
     # Schemas
     "UserCreate",
     "UserRegister",
