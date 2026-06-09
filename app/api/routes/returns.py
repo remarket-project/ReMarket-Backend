@@ -12,7 +12,7 @@ from app.crud.crud_return import get_return_by_id
 from app.crud.crud_wallet import get_wallet_by_user_id, unlock_balance
 from app.models.enums import OrderStatus
 from app.models.return_request import ReturnReason, ReturnRequest, ReturnStatus
-from app.services.escrow_worker import schedule_auto_release  # noqa: F401
+
 
 router = APIRouter(prefix="/returns", tags=["Returns"])
 

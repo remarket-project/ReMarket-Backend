@@ -304,6 +304,53 @@ async def accept_order(
     return updated_order
 
 
+class ShipOrderInput(BaseModel):
+    tracking_number: str | None = None
+    shipping_provider: str | None = None
+
+
+@router.post("/{order_id}/ship", response_model=OrderRead)
+async def ship_order(
+    current_user: CurrentUser,
+    db: SessionDep,
+    order_id: uuid.UUID,
+    data: ShipOrderInput = ShipOrderInput(),
+):
+    """Seller đánh dấu đã gửi hàng → PENDING → SHIPPING."""
+    order = await crud_order.get_order_by_id(db, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Đơn hàng không tìm thấy")
+
+    if order.seller_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Chỉ người bán mới có thể xác nhận đã gửi hàng")
+
+    if order.status != OrderStatus.PENDING:
+        raise HTTPException(status_code=400, detail=f"Không thể gửi hàng ở trạng thái {order.status}")
+
+    order.status = OrderStatus.SHIPPING
+    if data.tracking_number:
+        order.tracking_number = data.tracking_number
+    if data.shipping_provider:
+        order.shipping_provider = data.shipping_provider
+    order.updated_at = datetime.now(timezone.utc)
+    db.add(order)
+    await db.commit()
+    await db.refresh(order)
+
+    await crud_order_event.create_order_event(
+        db, order.id, "SHIPPED_BY_SELLER",
+        f"Seller marked as shipped. Tracking: {data.tracking_number or 'N/A'}",
+        actor_id=current_user.id,
+    )
+
+    await ws_manager.send_to_user(order.buyer_id, {
+        "type": "order_status_updated",
+        "order_id": str(order.id),
+    })
+
+    return order
+
+
 @router.post("/{order_id}/cancel", response_model=OrderRead)
 async def cancel_order(
     current_user: CurrentUser,
@@ -341,6 +388,14 @@ async def cancel_order(
     })
     await ws_manager.send_to_user(order.seller_id, {
         "type": "order_cancelled",
+        "order_id": str(order.id),
+    })
+    await ws_manager.send_to_user(order.buyer_id, {
+        "type": "order_status_updated",
+        "order_id": str(order.id),
+    })
+    await ws_manager.send_to_user(order.seller_id, {
+        "type": "order_status_updated",
         "order_id": str(order.id),
     })
 

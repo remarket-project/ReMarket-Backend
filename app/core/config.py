@@ -125,6 +125,7 @@ class Settings(BaseSettings):
 
     # Auto order completion
     ORDER_AUTO_COMPLETE_HOURS: int = 48
+    ORDER_AUTO_CANCEL_HOURS: int = 24
     ORDER_AUTO_CHECK_INTERVAL_SECONDS: int = 60
 
     # Withdraw limits

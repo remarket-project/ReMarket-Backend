@@ -226,17 +226,17 @@ async def reject_listing_route(
     return listing
 
 
-@router.post("/escrows/{order_id}/resolve")
-async def resolve_escrow_dispute(
-    order_id: uuid.UUID,
+@router.post("/disputes/{dispute_id}/resolve")
+async def resolve_dispute(
+    dispute_id: uuid.UUID,
     payload: ResolveEscrowRequest,
     admin_user: CurrentAdmin,
     db: SessionDep,
 ):
-    """Admin: resolve disputed escrow via the new Dispute system."""
-    dispute = await crud_dispute.get_dispute_by_order(db, order_id)
+    """Admin: resolve a dispute by ID."""
+    dispute = await crud_dispute.get_dispute_by_id(db, dispute_id)
     if not dispute:
-        raise HTTPException(status_code=404, detail="No dispute found for this order")
+        raise HTTPException(status_code=404, detail="Dispute not found")
     if dispute.status != "open":
         raise HTTPException(status_code=400, detail=f"Dispute is already {dispute.status}")
 
@@ -248,7 +248,7 @@ async def resolve_escrow_dispute(
         admin_notes=payload.note,
     )
 
-    order = await crud_order.get_order_by_id(db, order_id)
+    order = await crud_order.get_order_by_id(db, dispute.order_id)
 
     if payload.result == "release":
         buyer_title = "Tranh chấp được xử lý"
@@ -266,13 +266,13 @@ async def resolve_escrow_dispute(
             db=db, user_id=order.buyer_id,
             type=NotificationType.DISPUTE_RESOLVED,
             title=buyer_title, message=buyer_message,
-            data={"order_id": str(order_id), "result": payload.result, "note": payload.note or ""},
+            data={"order_id": str(dispute.order_id), "result": payload.result, "note": payload.note or ""},
         )
         await crud_notification.create_notification(
             db=db, user_id=order.seller_id,
             type=NotificationType.DISPUTE_RESOLVED,
             title=seller_title, message=seller_message,
-            data={"order_id": str(order_id), "result": payload.result, "note": payload.note or ""},
+            data={"order_id": str(dispute.order_id), "result": payload.result, "note": payload.note or ""},
         )
 
     await _log_admin_action(
@@ -283,10 +283,18 @@ async def resolve_escrow_dispute(
         note=payload.note,
     )
 
+    if order:
+        await ws_manager.send_to_user(order.buyer_id, {
+            "type": "order_status_updated", "order_id": str(dispute.order_id),
+        })
+        await ws_manager.send_to_user(order.seller_id, {
+            "type": "order_status_updated", "order_id": str(dispute.order_id),
+        })
+
     return {
         "message": "Dispute resolved",
         "dispute_id": str(dispute.id),
-        "order_id": str(order_id),
+        "order_id": str(dispute.order_id),
         "result": payload.result,
     }
 
@@ -493,6 +501,12 @@ async def admin_force_cancel(
     })
     await ws_manager.send_to_user(order.seller_id, {
         "type": "order_cancelled", "order_id": str(order_id),
+    })
+    await ws_manager.send_to_user(order.buyer_id, {
+        "type": "order_status_updated", "order_id": str(order_id),
+    })
+    await ws_manager.send_to_user(order.seller_id, {
+        "type": "order_status_updated", "order_id": str(order_id),
     })
 
     return updated

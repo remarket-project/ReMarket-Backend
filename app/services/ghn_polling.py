@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 STATUS_MAP = {
     "delivered": OrderStatus.DELIVERED,
-    "delivery_fail": OrderStatus.DELIVERY_FAILED,
+    "delivery_fail": OrderStatus.RETURNING,
     "return": OrderStatus.RETURNING,
     "returning": OrderStatus.RETURNING,
     "returned": OrderStatus.RETURNED,
@@ -36,7 +36,6 @@ async def poll_ghn_status():
                         Order.tracking_number.is_not(None),  # type: ignore[arg-type]
                         Order.status.in_([  # type: ignore[attr-defined]
                             OrderStatus.SHIPPING,
-                            OrderStatus.DELIVERY_FAILED,
                             OrderStatus.RETURNING,
                         ]),
                     )

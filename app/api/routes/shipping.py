@@ -4,7 +4,7 @@ GHN integration: provinces, districts, wards, fee calculation, order creation,
 webhook, return-order, and delivery-again.
 """
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID
 
@@ -263,12 +263,10 @@ async def _handle_delivered(order, order_code, delivered_time, db):
             pass
 
     if order.payment_method == "wallet":
-        escrow = await crud_escrow.get_escrow_by_order_id(db, order.id)
-        if escrow:
-            from app.services.escrow_worker import schedule_auto_release
-            escrow.delivered_at = order.delivered_at
-            schedule_auto_release(escrow)
-            db.add(escrow)
+        now = datetime.now(timezone.utc)
+        order.delivered_at_record = now
+        from app.core.config import settings
+        order.auto_complete_at = now + timedelta(hours=settings.ORDER_AUTO_COMPLETE_HOURS)
     elif order.payment_method == "cod":
         order.status = OrderStatus.COMPLETED
 
@@ -278,10 +276,10 @@ async def _handle_delivered(order, order_code, delivered_time, db):
 
 
 async def _handle_delivery_fail(order, order_code, reason, db):
-    order.status = OrderStatus.DELIVERY_FAILED
+    order.status = OrderStatus.RETURNING
     db.add(order)
-    await crud_order_event.create_order_event(db, order.id, "DELIVERY_FAILED",
-        f"GHN delivery failed: {reason}")
+    await crud_order_event.create_order_event(db, order.id, "RETURNING",
+        f"GHN delivery failed, returning: {reason}")
 
 
 async def _handle_returned(order, order_code, db):
@@ -331,8 +329,8 @@ async def return_shipping_order(
         raise HTTPException(status_code=404, detail="Order not found")
     if order.seller_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only seller can request return")
-    if order.status not in (OrderStatus.DELIVERY_FAILED, OrderStatus.SHIPPING):
-        raise HTTPException(status_code=400, detail="Order must be delivery_failed or shipping to return")
+    if order.status not in (OrderStatus.SHIPPING,):
+        raise HTTPException(status_code=400, detail="Order must be shipping to return")
     if not order.tracking_number:
         raise HTTPException(status_code=400, detail="No tracking number")
 
@@ -359,8 +357,8 @@ async def delivery_again_shipping(
         raise HTTPException(status_code=404, detail="Order not found")
     if order.seller_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only seller can request delivery again")
-    if order.status != OrderStatus.DELIVERY_FAILED:
-        raise HTTPException(status_code=400, detail="Order must be delivery_failed to retry delivery")
+    if order.status != OrderStatus.SHIPPING:
+        raise HTTPException(status_code=400, detail="Order must be shipping to retry delivery")
     if not order.tracking_number:
         raise HTTPException(status_code=400, detail="No tracking number")
 

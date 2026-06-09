@@ -50,7 +50,6 @@ class OrderStatus(str, Enum):
     PENDING = "pending"            # Vừa tạo, chờ admin xử lý
     SHIPPING = "shipping"          # Admin đang vận chuyển
     DELIVERED = "delivered"        # Admin đã giao hàng
-    DELIVERY_FAILED = "delivery_failed"  # Giao hàng thất bại
     RETURNING = "returning"        # Đang hoàn trả
     RETURNED = "returned"          # Đã hoàn trả (terminal)
     COMPLETED = "completed"        # Hoàn tất (terminal)
