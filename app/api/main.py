@@ -19,6 +19,7 @@ from app.api.routes import (
     reviews,
     saved_follow,
     shipping,
+    uploads,
     users_route,
     wallet,
     websocket,
@@ -66,6 +67,11 @@ api_router.include_router(escrow.router)
 # WebSocket Route
 # ============================================================================
 api_router.include_router(websocket.router)
+
+# ============================================================================
+# Upload Route
+# ============================================================================
+api_router.include_router(uploads.router)
 
 # ============================================================================
 # Shipping Route (GHN)

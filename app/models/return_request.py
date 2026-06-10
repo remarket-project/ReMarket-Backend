@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from enum import Enum
 
-from sqlalchemy import Column, String
+from sqlalchemy import Column, DateTime, String
 from sqlmodel import Field, SQLModel
 
 
@@ -48,12 +48,30 @@ class ReturnRequest(SQLModel, table=True):
     return_tracking_number: str | None = Field(default=None, max_length=50)
     return_carrier: str | None = Field(default=None, max_length=50)
 
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
-    seller_responded_at: datetime | None = None
-    buyer_shipped_at: datetime | None = None
-    seller_received_at: datetime | None = None
-    refunded_at: datetime | None = None
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    seller_responded_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    buyer_shipped_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    seller_received_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    refunded_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
     admin_id: uuid.UUID | None = Field(default=None, foreign_key="users.id")
     admin_notes: str | None = Field(default=None, max_length=1000)

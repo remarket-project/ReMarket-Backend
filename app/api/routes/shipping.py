@@ -11,10 +11,13 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from sqlalchemy import select
+
 from app.api.deps import CurrentUser, SessionDep
 from app.crud import crud_escrow, crud_order, crud_order_event
 from app.crud.crud_wallet import get_wallet_by_user_id, unlock_balance
-from app.models.enums import OrderStatus
+from app.models.enums import ListingStatus, OrderStatus
+from app.models.listing import Listing
 from app.services import ghn
 
 logger = logging.getLogger(__name__)
@@ -296,6 +299,14 @@ async def _handle_returned(order, order_code, db):
             escrow.status = "refunded"
             db.add(escrow)
 
+    listing_result = await db.execute(
+        select(Listing).where(Listing.id == order.listing_id).with_for_update()
+    )
+    listing = listing_result.scalar_one_or_none()
+    if listing:
+        listing.status = ListingStatus.ACTIVE
+        db.add(listing)
+
     await crud_order_event.create_order_event(db, order.id, "RETURNED",
         f"GHN returned: {order_code}", actor_id=None)
 
@@ -312,6 +323,14 @@ async def _handle_cancelled(order, order_code, db):
                 description=f"Refund from cancel: {order_code}")
         escrow.status = "refunded"
         db.add(escrow)
+
+    listing_result = await db.execute(
+        select(Listing).where(Listing.id == order.listing_id).with_for_update()
+    )
+    listing = listing_result.scalar_one_or_none()
+    if listing:
+        listing.status = ListingStatus.ACTIVE
+        db.add(listing)
 
     await crud_order_event.create_order_event(db, order.id, "CANCELLED",
         f"GHN cancelled: {order_code}", actor_id=None)

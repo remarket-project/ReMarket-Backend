@@ -2,13 +2,17 @@
 import asyncio
 import logging
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import select as sa_select
 from sqlmodel import select
 
 from app.core.config import settings
+from app.crud import crud_escrow, crud_order_event
+from app.crud.crud_wallet import get_wallet_by_user_id, unlock_balance
 from app.db.session import AsyncSessionLocal
-from app.models.enums import OrderStatus
+from app.models.enums import ListingStatus, OrderStatus
+from app.models.listing import Listing
 from app.models.order import Order
 from app.services import ghn
 
@@ -22,6 +26,57 @@ STATUS_MAP = {
     "returned": OrderStatus.RETURNED,
     "cancel": OrderStatus.CANCELLED,
 }
+
+ESCROW_ACTIONS = {
+    OrderStatus.RETURNED: ("refund", True),
+    OrderStatus.CANCELLED: ("refund", True),
+}
+
+
+async def _handle_polling_status_change(db, order, new_status):
+    """Handle escrow + listing revert when polling detects a status change."""
+    order.status = new_status
+
+    if new_status == OrderStatus.DELIVERED:
+        order.delivered_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        order.delivered_at_record = order.delivered_at
+        order.auto_complete_at = order.delivered_at_record + timedelta(
+            hours=settings.ORDER_AUTO_COMPLETE_HOURS
+        )
+
+    if new_status in ESCROW_ACTIONS:
+        action, revert_listing = ESCROW_ACTIONS[new_status]
+        escrow = await crud_escrow.get_escrow_by_order_id(db, order.id)
+
+        if action == "refund" and escrow:
+            if escrow.status in ("funded", "disputed"):
+                buyer_wallet = await get_wallet_by_user_id(db, order.buyer_id)
+                if buyer_wallet:
+                    await unlock_balance(
+                        db, buyer_wallet.id, escrow.amount, order.id,
+                        description=f"Refund from GHN poll: {order.tracking_number}",
+                    )
+                escrow.status = "refunded"
+                escrow.updated_at = datetime.now(timezone.utc)
+                db.add(escrow)
+
+        if revert_listing:
+            listing_result = await db.execute(
+                sa_select(Listing).where(Listing.id == order.listing_id).with_for_update()
+            )
+            listing = listing_result.scalar_one_or_none()
+            if listing:
+                listing.status = ListingStatus.ACTIVE
+                db.add(listing)
+
+    await crud_order_event.create_order_event(
+        db, order.id, f"GHN_POLL_{new_status.value}",
+        f"GHN poll: {order.tracking_number} -> {new_status}",
+        actor_id=None,
+    )
+
+    db.add(order)
+    await db.commit()
 
 
 async def poll_ghn_status():
@@ -51,13 +106,7 @@ async def poll_ghn_status():
                                 f"GHN poll: {order.tracking_number} "
                                 f"{order.status} -> {new_status}"
                             )
-                            order.status = new_status
-
-                            if new_status == OrderStatus.DELIVERED:
-                                order.delivered_at = datetime.now(timezone.utc).replace(tzinfo=None)
-
-                            db.add(order)
-                            await db.commit()
+                            await _handle_polling_status_change(db, order, new_status)
 
                     except Exception as e:
                         logger.warning(

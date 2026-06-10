@@ -70,6 +70,4 @@ async def get_user_reviews(user_id: uuid.UUID, db: SessionDep):
 async def get_review(order_id: uuid.UUID, db: SessionDep):
     """Lấy tất cả đánh giá cho một đơn hàng"""
     reviews = await crud_review.get_reviews_by_order(db, order_id)
-    if not reviews:
-        raise HTTPException(status_code=404, detail="Đánh giá không tìm thấy")
     return reviews
