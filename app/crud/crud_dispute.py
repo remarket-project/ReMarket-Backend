@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from sqlalchemy import desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
 
 from app.models.dispute import Dispute, DisputeEvidence
 from app.models.enums import EscrowStatus, ListingStatus, OrderStatus
@@ -37,7 +38,7 @@ async def create_dispute(
     order = order_result.scalar_one_or_none()
     if order and order.status in (OrderStatus.DELIVERED, OrderStatus.SHIPPING):
         order.status = OrderStatus.DISPUTED
-        order.updated_at = datetime.now(timezone.utc)
+        order.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.add(order)
 
     await db.commit()
@@ -66,7 +67,9 @@ async def add_evidence(
 async def get_dispute_by_id(db: AsyncSession, dispute_id: uuid.UUID) -> Dispute | None:
     """Get dispute by ID."""
     result = await db.execute(
-        select(Dispute).where(Dispute.id == dispute_id)  # type: ignore[arg-type]
+        select(Dispute)
+        .options(selectinload(Dispute.evidence))
+        .where(Dispute.id == dispute_id)  # type: ignore[arg-type]
     )
     return result.scalar_one_or_none()
 
@@ -74,7 +77,9 @@ async def get_dispute_by_id(db: AsyncSession, dispute_id: uuid.UUID) -> Dispute 
 async def get_dispute_by_order(db: AsyncSession, order_id: uuid.UUID) -> Dispute | None:
     """Get dispute for an order (if exists)."""
     result = await db.execute(
-        select(Dispute).where(Dispute.order_id == order_id)  # type: ignore[arg-type]
+        select(Dispute)
+        .options(selectinload(Dispute.evidence))
+        .where(Dispute.order_id == order_id)  # type: ignore[arg-type]
     )
     return result.scalar_one_or_none()
 
@@ -192,7 +197,7 @@ async def list_disputes(
     """List disputes with optional status filter."""
     from sqlalchemy import func
 
-    query = select(Dispute)
+    query = select(Dispute).options(selectinload(Dispute.evidence))
     count_query = select(func.count()).select_from(Dispute)
 
     if status:

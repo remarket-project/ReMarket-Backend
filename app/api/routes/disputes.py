@@ -7,10 +7,13 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
+from sqlalchemy.orm import selectinload
+from sqlalchemy import select
 
 from app.api.deps import CurrentUser, SessionDep
 from app.core.websocket_manager import ws_manager
 from app.crud import crud_dispute, crud_notification, crud_order
+from app.models.dispute import Dispute
 from app.models.enums import NotificationType, OrderStatus
 from app.schemas.dispute import DisputeCreate, DisputeRead
 
@@ -55,6 +58,14 @@ async def create_dispute(
                 uploaded_by=current_user.id,
                 image_url=image_url,
             )
+
+    # Re-fetch dispute with evidence loaded for response serialization
+    result = await db.execute(
+        select(Dispute)
+        .options(selectinload(Dispute.evidence))
+        .where(Dispute.id == dispute.id)
+    )
+    dispute = result.scalar_one()
 
     # Notify the other party
     target_id = order.seller_id if current_user.id == order.buyer_id else order.buyer_id

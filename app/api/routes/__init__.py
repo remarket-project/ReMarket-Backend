@@ -16,6 +16,7 @@ from app.api.routes import (
     reviews,
     saved_follow,
     shipping,
+    uploads,
     users_route,
     wallet,
     websocket,
@@ -41,4 +42,5 @@ __all__ = [
     "escrow",
     "shipping",
     "payment",
+    "uploads",
 ]

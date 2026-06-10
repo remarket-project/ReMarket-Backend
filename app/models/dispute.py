@@ -28,7 +28,7 @@ class Dispute(BaseUUID, table=True):
     resolution: str | None = Field(default=None)  # refund | release | partial_refund
     admin_notes: str | None = Field(default=None, max_length=2000)
 
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     resolved_at: datetime | None = Field(default=None)
 
     # Relationships
@@ -46,7 +46,7 @@ class DisputeEvidence(BaseUUID, table=True):
     dispute_id: uuid.UUID = Field(foreign_key="disputes.id", nullable=False)
     uploaded_by: uuid.UUID = Field(foreign_key="users.id", nullable=False)
     image_url: str = Field(max_length=500)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     dispute: "Dispute" = Relationship(back_populates="evidence")
