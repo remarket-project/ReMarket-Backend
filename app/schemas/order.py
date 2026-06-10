@@ -62,6 +62,7 @@ class OrderRead(OrderBase):
     offer_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
+    has_dispute: bool = False
 
     model_config = {"from_attributes": True}
 

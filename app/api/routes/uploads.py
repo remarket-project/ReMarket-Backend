@@ -2,6 +2,7 @@ import os
 import uuid
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi.responses import Response
 
 from app.api.deps import CurrentUser
 from app.core.config import settings
@@ -56,3 +57,26 @@ async def upload_file(current_user: CurrentUser, file: UploadFile = File(...)):
         image_url = f"/{settings.UPLOAD_DIR}/{unique_filename}"
 
     return {"url": image_url}
+
+
+@router.get("/{path:path}")
+async def serve_file(path: str):
+    """Proxy files from MinIO through the backend (handles internal Docker hostnames)."""
+    if not settings.use_minio:
+        raise HTTPException(status_code=404, detail="MinIO not configured")
+
+    minio_service = get_minio_service()
+    if not minio_service:
+        raise HTTPException(status_code=503, detail="MinIO service not available")
+
+    try:
+        response = minio_service.client.get_object(settings.MINIO_BUCKET_NAME, path)
+        content = response.read()
+        response.close()
+        response.release_conn()
+
+        import mimetypes
+        content_type, _ = mimetypes.guess_type(path)
+        return Response(content=content, media_type=content_type or "application/octet-stream")
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")

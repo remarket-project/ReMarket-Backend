@@ -123,7 +123,7 @@ async def resolve_dispute(
     dispute.resolved_by = resolved_by
     dispute.resolution = resolution
     dispute.admin_notes = admin_notes
-    dispute.resolved_at = datetime.now(timezone.utc)
+    dispute.resolved_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.add(dispute)
 
     # Get order

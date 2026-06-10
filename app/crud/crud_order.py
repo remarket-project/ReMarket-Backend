@@ -6,9 +6,10 @@ Handles order creation, retrieval, and status updates.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import desc, or_, update
+from sqlalchemy import desc, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
 
 from app.crud.crud_order_event import create_order_event
 from app.models.enums import EscrowStatus, ListingStatus, OfferStatus, OrderStatus
@@ -37,8 +38,6 @@ async def get_user_orders(
     limit: int = 20
 ) -> tuple[list[Order], int]:
     """Get paginated orders for a user (as buyer or seller)."""
-    from sqlalchemy import func
-
     base_condition = or_(Order.buyer_id == user_id, Order.seller_id == user_id)  # type: ignore[arg-type]
 
     # Count total
@@ -47,9 +46,10 @@ async def get_user_orders(
     )
     total = count_result.scalar_one()
 
-    # Get paginated items
+    # Get paginated items with dispute info
     result = await db.execute(
         select(Order)
+        .options(selectinload(Order.disputes))
         .where(base_condition)  # type: ignore[arg-type]
         .order_by(desc(Order.created_at))  # type: ignore[arg-type]
         .offset(skip)

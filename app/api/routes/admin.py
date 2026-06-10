@@ -526,7 +526,7 @@ async def admin_list_disputes(
 ):
     """Admin: list disputes, filter by status."""
     disputes, total = await crud_dispute.list_disputes(db, status=status, skip=skip, limit=limit)
-    return {"items": disputes, "total": total}
+    return {"items": [DisputeRead.model_validate(d) for d in disputes], "total": total}
 
 
 @router.get("/disputes/{dispute_id}", response_model=DisputeRead)

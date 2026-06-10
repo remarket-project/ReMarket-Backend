@@ -173,7 +173,12 @@ async def get_my_orders(
 ):
     """Lấy danh sách đơn hàng của tôi (là người mua hoặc người bán)"""
     items, total = await crud_order.get_user_orders(db, current_user.id)
-    return items
+    result = []
+    for item in items:
+        d = {c.name: getattr(item, c.name) for c in item.__table__.columns}
+        d["has_dispute"] = len(item.disputes) > 0
+        result.append(OrderRead.model_validate(d))
+    return result
 
 
 @router.get("/{order_id}", response_model=OrderRead)

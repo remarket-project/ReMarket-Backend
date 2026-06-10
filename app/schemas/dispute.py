@@ -1,10 +1,24 @@
 """
 Dispute schemas for request/response validation.
 """
+import re
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
+
+from app.core.config import settings
+
+
+def _serve_url(image_url: str) -> str:
+    """Convert MinIO URL to backend proxy URL."""
+    # Find the object path after the bucket name
+    bucket = settings.MINIO_BUCKET_NAME or "listings"
+    match = re.search(rf"/{bucket}/(.+?)(?:\?|$)", image_url)
+    if match:
+        path = match.group(1)
+        return f"{settings.API_V1_STR}/upload/{path}"
+    return image_url
 
 
 class DisputeCreate(BaseModel):
@@ -22,6 +36,11 @@ class DisputeEvidenceRead(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @computed_field
+    @property
+    def serve_url(self) -> str:
+        return _serve_url(self.image_url)
 
 
 class DisputeRead(BaseModel):

@@ -24,10 +24,11 @@ class ResolveEscrowRequest(BaseModel):
         ...,
         description="release: transfer to seller, refund: return funds to buyer"
     )
-    note: str | None = Field(
-        default=None,
+    note: str = Field(
+        ...,
+        min_length=10,
         max_length=500,
-        description="Optional admin note"
+        description="Admin note explaining the resolution reason"
     )
 
 
