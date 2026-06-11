@@ -47,7 +47,7 @@ async def create_direct_order(
     listing = await crud_listing.get_listing(db, str(data.listing_id))
     if not listing:
         raise HTTPException(status_code=404, detail="Bài đăng không tìm thấy")
-    if listing.status != ListingStatus.ACTIVE:
+    if listing.status not in (ListingStatus.ACTIVE,):
         raise HTTPException(
             status_code=400, detail="Bài đăng không có sẵn để mua")
     if listing.seller_id == current_user.id:
@@ -160,6 +160,12 @@ async def create_direct_order(
     await ws_manager.send_to_user(current_user.id, {
         "type": "order_status_updated",
         "order_id": str(order.id),
+    })
+
+    # WS: broadcast to all users that this listing is now sold
+    await ws_manager.broadcast_to_all({
+        "type": "listing_sold_broadcast",
+        "listing_id": str(order.listing_id),
     })
 
     return order
@@ -367,8 +373,8 @@ async def cancel_order(
     if not order:
         raise HTTPException(status_code=404, detail="Đơn hàng không tìm thấy")
 
-    if order.buyer_id != current_user.id and order.seller_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Không có quyền truy cập")
+    if order.buyer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Chỉ người mua mới có thể hủy đơn hàng")
 
     if order.status != OrderStatus.PENDING:
         raise HTTPException(

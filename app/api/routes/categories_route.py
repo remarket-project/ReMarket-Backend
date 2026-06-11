@@ -8,6 +8,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import CurrentAdmin, SessionDep
+from app.core.websocket_manager import ws_manager
 from app.crud import crud_category
 from app.models import (
     CategoriesPublic,
@@ -182,6 +183,7 @@ async def create_category(
 
     # Create category
     category = await crud_category.create_category(session, data)
+    await ws_manager.broadcast_to_all({"type": "category_changed"})
     return CategoryPublic.model_validate(category)
 
 
@@ -228,6 +230,7 @@ async def update_category(
         )
 
     updated = await crud_category.update_category(session, category_id, data)
+    await ws_manager.broadcast_to_all({"type": "category_changed"})
     return CategoryPublic.model_validate(updated)
 
 
@@ -266,3 +269,4 @@ async def delete_category(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Category not found"
         )
+    await ws_manager.broadcast_to_all({"type": "category_changed"})

@@ -134,6 +134,7 @@ class Settings(BaseSettings):
 
     # Offers
     OFFER_EXPIRE_HOURS: int = 48
+    OFFER_CONFIRM_HOURS: int = 24
     OFFER_EXPIRY_JOB_INTERVAL_MINUTES: int = 5
 
     # Email / SMTP

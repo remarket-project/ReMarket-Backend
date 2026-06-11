@@ -16,6 +16,7 @@ class ListingStatus(str, Enum):
     """Status of a listing."""
     PENDING = "pending"        # Chờ admin duyệt
     ACTIVE = "active"          # Được duyệt, công khai
+    RESERVED = "reserved"      # Đang chờ buyer xác nhận đặt hàng từ offer
     SOLD = "sold"              # Đã bán
     HIDDEN = "hidden"          # Bị ẩn (vi phạm hoặc seller ẩn)
     REJECTED = "rejected"      # Bị từ chối duyệt
@@ -33,7 +34,8 @@ class ConditionGrade(str, Enum):
 class OfferStatus(str, Enum):
     """Status of an offer (negotiation)."""
     PENDING = "pending"        # Chờ phản hồi
-    ACCEPTED = "accepted"      # Chấp nhận → Auto tạo order
+    ACCEPTED = "accepted"      # Seller đồng ý, chờ buyer xác nhận đặt hàng (24h)
+    CONFIRMED = "confirmed"    # Buyer xác nhận đặt hàng, đã tạo Order
     REJECTED = "rejected"      # Từ chối
     COUNTERED = "countered"    # Đưa ra giá mới
     EXPIRED = "expired"        # Hết hạn

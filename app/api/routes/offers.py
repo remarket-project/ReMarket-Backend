@@ -7,12 +7,18 @@ from slowapi.util import get_remote_address
 from sqlalchemy.future import select
 
 from app.api.deps import CurrentUser, SessionDep
+from app.core.config import settings
 from app.core.websocket_manager import ws_manager
-from app.crud import crud_escrow, crud_notification, crud_offer, crud_wallet
-from app.models.enums import NotificationType, OfferStatus, OrderStatus
+from app.crud import crud_notification, crud_offer
+from app.models.enums import NotificationType, OfferStatus
 from app.models.listing import Listing
-from app.models.order import Order
-from app.schemas.offer import OfferCreate, OfferRead, OfferStatusUpdate
+from app.schemas.offer import (
+    OfferConfirmRequest,
+    OfferCreate,
+    OfferRead,
+    OfferStatusUpdate,
+)
+from app.schemas.order import OrderRead
 
 router = APIRouter(prefix="/offers", tags=["Offers"])
 limiter = Limiter(key_func=get_remote_address)
@@ -141,6 +147,58 @@ async def get_offers_for_listing(
     return offers
 
 
+@router.post("/{offer_id}/confirm", response_model=OrderRead)
+async def confirm_offer_order(
+    current_user: CurrentUser,
+    db: SessionDep,
+    offer_id: uuid.UUID,
+    confirm_in: OfferConfirmRequest,
+):
+    """Buyer xác nhận đặt hàng sau khi seller đồng ý offer. Tạo Order + Escrow + Fund."""
+    offer = await crud_offer.get_offer_by_id(db, offer_id)
+    if not offer:
+        raise HTTPException(status_code=404, detail="Offer không tìm thấy")
+    if offer.buyer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Chỉ người mua mới có thể xác nhận")
+
+    try:
+        order = await crud_offer.confirm_offer_and_create_order(
+            db, offer_id, current_user.id,
+            shipping_address=confirm_in.shipping_address,
+            payment_method=confirm_in.payment_method,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    # Notifications
+    listing_result = await db.execute(
+        select(Listing).where(Listing.id == offer.listing_id)
+    )
+    listing = listing_result.scalar_one_or_none()
+    listing_title = listing.title if listing else ""
+
+    await crud_notification.create_notification(
+        db=db,
+        user_id=order.seller_id,
+        type=NotificationType.ORDER_CREATED,
+        title="Đơn hàng mới",
+        message=f"Người mua đã xác nhận đặt hàng cho '{listing_title}'.",
+        data={"order_id": str(order.id), "listing_id": str(order.listing_id)},
+    )
+
+    await ws_manager.send_to_user(order.seller_id, {
+        "type": "new_order",
+        "order_id": str(order.id),
+    })
+
+    await ws_manager.broadcast_to_all({
+        "type": "listing_sold_broadcast",
+        "listing_id": str(order.listing_id),
+    })
+
+    return order
+
+
 @router.patch("/{offer_id}/status", response_model=OfferRead)
 async def update_offer_status(
     current_user: CurrentUser,
@@ -169,7 +227,8 @@ async def update_offer_status(
             detail="Bạn không có quyền cập nhật yêu cầu mua này"
         )
 
-    if offer.status in {OfferStatus.ACCEPTED, OfferStatus.REJECTED, OfferStatus.EXPIRED}:
+    # ACCEPTED no longer terminal — buyer can reject
+    if offer.status in {OfferStatus.REJECTED, OfferStatus.EXPIRED}:
         raise HTTPException(
             status_code=400,
             detail=f"Không thể thay đổi yêu cầu ở trạng thái: {offer.status}"
@@ -206,6 +265,12 @@ async def update_offer_status(
                     status_code=400,
                     detail="Người mua chỉ có thể chấp nhận hoặc từ chối yêu cầu COUNTERED"
                 )
+        elif offer.status == OfferStatus.ACCEPTED:
+            if status_update.status != OfferStatus.REJECTED:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Người mua chỉ có thể từ chối yêu cầu đã được đồng ý"
+                )
         else:
             raise HTTPException(
                 status_code=400,
@@ -213,7 +278,6 @@ async def update_offer_status(
             )
 
     # Remove redundant check — CRUD handles listing.status validation with FOR UPDATE
-    previous_status = offer.status
     try:
         updated_offer, rejected_offers = await crud_offer.update_offer_status(
             db,
@@ -223,37 +287,6 @@ async def update_offer_status(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-
-    order_id = None
-    if status_update.status == OfferStatus.ACCEPTED:
-        order = Order(
-            buyer_id=offer.buyer_id,
-            seller_id=listing.seller_id,
-            listing_id=offer.listing_id,
-            final_price=offer.offer_price,
-            status=OrderStatus.PENDING,
-            offer_id=offer.id,  # BUG-10: trace from order back to offer
-        )
-        db.add(order)
-
-        # Auto-create escrow for newly created order.
-        await db.flush()
-        existing_escrow = await crud_escrow.get_escrow_by_order_id(db, order.id)
-        if not existing_escrow:
-            buyer_wallet = await crud_wallet.get_or_create_wallet(db, offer.buyer_id)
-            seller_wallet = await crud_wallet.get_or_create_wallet(db, listing.seller_id)
-            await crud_escrow.create_escrow(
-                db=db,
-                order_id=order.id,
-                amount=offer.offer_price,
-                buyer_wallet_id=buyer_wallet.id,
-                seller_wallet_id=seller_wallet.id,
-            )
-        order_id = order.id
-
-        # BUG-07: Persist order_id on offer so FE can show "Xem đơn hàng" link
-        updated_offer.order_id = order.id
-        db.add(updated_offer)
 
     await db.commit()
     await db.refresh(updated_offer)
@@ -279,72 +312,59 @@ async def update_offer_status(
         await crud_notification.create_notification(
             db=db,
             user_id=offer.buyer_id,
-            type=NotificationType.ORDER_CREATED,
-            title="Đơn hàng đã tạo",
-            message=f"Yêu cầu mua cho '{listing.title}' đã được chấp nhận. Đơn hàng đã tạo.",
-            data={"listing_id": str(listing.id), "order_id": str(order_id) if order_id else None},
+            type=NotificationType.OFFER_ACCEPTED,
+            title="Người bán đã đồng ý",
+            message=(
+                f"Người bán đã đồng ý với đề nghị của bạn cho '{listing.title}'. "
+                f"Bạn có {settings.OFFER_CONFIRM_HOURS}h để xác nhận đặt hàng."
+            ),
+            data={"offer_id": str(offer.id), "listing_id": str(listing.id)},
         )
         await ws_manager.send_to_user(offer.buyer_id, {
             "type": "offer_accepted",
             "offer_id": str(offer.id),
             "listing_id": str(listing.id),
-            "order_id": str(order_id) if order_id else None,
+            "expires_in_hours": settings.OFFER_CONFIRM_HOURS,
         })
 
         await crud_notification.create_notification(
             db=db,
             user_id=listing.seller_id,
-            type=NotificationType.ORDER_CREATED,
-            title="Đơn hàng đã tạo",
-            message=f"Bạn đã chấp nhận yêu cầu mua cho '{listing.title}'. Đơn hàng đã tạo.",
-            data={"listing_id": str(listing.id), "order_id": str(order_id) if order_id else None},
+            type=NotificationType.OFFER_ACCEPTED,
+            title="Đã đồng ý với đề nghị",
+            message=f"Bạn đã đồng ý với đề nghị mua '{listing.title}'. Đang chờ người mua xác nhận.",
+            data={"offer_id": str(offer.id), "listing_id": str(listing.id)},
         )
 
     if status_update.status in {OfferStatus.ACCEPTED, OfferStatus.REJECTED, OfferStatus.COUNTERED}:
-        notification_type = {
-            OfferStatus.ACCEPTED: NotificationType.OFFER_ACCEPTED,
-            OfferStatus.REJECTED: NotificationType.OFFER_REJECTED,
-            OfferStatus.COUNTERED: NotificationType.OFFER_COUNTERED,
-        }[status_update.status]
+        # Don't send duplicated notification for ACCEPTED (already sent above)
+        if status_update.status != OfferStatus.ACCEPTED:
+            notification_type = {
+                OfferStatus.REJECTED: NotificationType.OFFER_REJECTED,
+                OfferStatus.COUNTERED: NotificationType.OFFER_COUNTERED,
+            }[status_update.status]
 
-        if is_seller:
-            target_user_id = offer.buyer_id
-            message = f"Yêu cầu mua cho '{listing.title}' đã được cập nhật thành '{status_update.status}'."
-        else:
-            target_user_id = listing.seller_id
-            message = f"Người mua đã trả lời yêu cầu mua ngược lại cho '{listing.title}' với '{status_update.status}'."
+            if is_seller:
+                target_user_id = offer.buyer_id
+                message = f"Yêu cầu mua cho '{listing.title}' đã được cập nhật thành '{status_update.status}'."
+            else:
+                target_user_id = listing.seller_id
+                message = f"Người mua đã trả lời yêu cầu mua ngược lại cho '{listing.title}' với '{status_update.status}'."
 
-        await crud_notification.create_notification(
-            db=db,
-            user_id=target_user_id,
-            type=notification_type,
-            title="Trạng thái yêu cầu mua được cập nhật",
-            message=message,
-            data={"offer_id": str(offer.id), "listing_id": str(listing.id)},
-        )
-        await ws_manager.send_to_user(target_user_id, {
-            "type": notification_type.value,
-            "offer_id": str(offer.id),
-            "listing_id": str(listing.id),
-        })
+            await crud_notification.create_notification(
+                db=db,
+                user_id=target_user_id,
+                type=notification_type,
+                title="Trạng thái yêu cầu mua được cập nhật",
+                message=message,
+                data={"offer_id": str(offer.id), "listing_id": str(listing.id)},
+            )
+            await ws_manager.send_to_user(target_user_id, {
+                "type": notification_type.value,
+                "offer_id": str(offer.id),
+                "listing_id": str(listing.id),
+            })
 
-    if previous_status != OfferStatus.EXPIRED and updated_offer.status == OfferStatus.EXPIRED:
-        await crud_notification.create_notification(
-            db=db,
-            user_id=offer.buyer_id,
-            type=NotificationType.OFFER_EXPIRED,
-            title="Yêu cầu mua hết hạn",
-            message="Yêu cầu mua của bạn đã hết hạn do quá thời gian.",
-            data={"offer_id": str(offer.id), "listing_id": str(listing.id)},
-        )
-        await ws_manager.send_to_user(offer.buyer_id, {
-            "type": "offer_expired",
-            "offer_id": str(offer.id),
-            "listing_id": str(listing.id),
-        })
-
-    if order_id:
-        updated_offer.order_id = order_id
     return updated_offer
 
 

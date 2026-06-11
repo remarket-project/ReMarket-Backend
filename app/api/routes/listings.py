@@ -11,6 +11,7 @@ from sqlalchemy.future import select
 
 from app.api.deps import CurrentUser, SessionDep
 from app.core.config import settings
+from app.core.websocket_manager import ws_manager
 from app.crud import crud_category, crud_listing
 from app.models.enums import ListingStatus, OfferStatus
 from app.models.offer import Offer
@@ -295,6 +296,7 @@ async def create_listing(
     except IntegrityError as err:
         await db.rollback()
         raise HTTPException(status_code=400, detail="ID danh mục không hợp lệ") from err
+    await ws_manager.broadcast_to_all({"type": "new_pending_listing"})
     return new_listing
 
 
@@ -316,9 +318,9 @@ async def update_listing(
         raise HTTPException(
             status_code=403, detail="Không có quyền chỉnh sửa bài đăng này")
 
-    if listing.status == ListingStatus.SOLD:
+    if listing.status in (ListingStatus.SOLD, ListingStatus.RESERVED):
         raise HTTPException(
-            status_code=400, detail="Không thể chỉnh sửa bài đăng đã bán")
+            status_code=400, detail="Không thể chỉnh sửa bài đăng đã bán hoặc đang giữ chỗ")
 
     if current_user.role != UserRole.ADMIN:
         result = await db.execute(
@@ -335,7 +337,7 @@ async def update_listing(
             )
 
     if data.status is not None and current_user.role != UserRole.ADMIN:
-        if data.status not in (ListingStatus.HIDDEN, ListingStatus.ACTIVE, ListingStatus.SOLD):
+        if data.status not in (ListingStatus.HIDDEN, ListingStatus.ACTIVE, ListingStatus.SOLD, ListingStatus.RESERVED):
             raise HTTPException(
                 status_code=403, detail="Chỉ admin có thể thay đổi trạng thái")
 
@@ -356,6 +358,10 @@ async def update_listing(
         category_id=str(data.category_id) if data.category_id else None,
         status=data.status,
     )
+    await ws_manager.broadcast_to_all({
+        "type": "listing_updated",
+        "listing_id": str(listing_id),
+    })
     return updated_listing
 
 
@@ -381,6 +387,10 @@ async def delete_listing(
             status_code=400, detail="Không thể xóa bài đăng đã bán")
 
     await crud_listing.hard_delete_listing(db, str(listing_id))
+    await ws_manager.broadcast_to_all({
+        "type": "listing_deleted",
+        "listing_id": str(listing_id),
+    })
     return None
 
 

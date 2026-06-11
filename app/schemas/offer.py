@@ -1,10 +1,12 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
-from app.models.enums import OfferStatus
+from app.core.config import settings
+from app.models.enums import OfferStatus, PaymentMethod
+from app.schemas.order import ShippingAddressInput
 
 
 class OfferBase(BaseModel):
@@ -28,12 +30,27 @@ class OfferRead(OfferBase):
 
     model_config = {"from_attributes": True}
 
+    @computed_field
+    @property
+    def expires_at(self) -> datetime | None:
+        """Thời gian hết hạn xác nhận (chỉ có ý nghĩa khi status = ACCEPTED)."""
+        if self.status == OfferStatus.ACCEPTED:
+            return self.created_at.replace(tzinfo=timezone.utc) + timedelta(hours=settings.OFFER_CONFIRM_HOURS)
+        return None
+
 
 class OfferStatusUpdate(BaseModel):
     status: OfferStatus = Field(
         ..., description="New status for the offer (ACCEPTED, REJECTED, COUNTERED)")
     offer_price: Decimal | None = Field(
         default=None, gt=Decimal("0"), decimal_places=2)
+
+
+class OfferConfirmRequest(BaseModel):
+    shipping_address: ShippingAddressInput | None = Field(
+        default=None, description="Thông tin giao hàng")
+    payment_method: PaymentMethod = Field(
+        default=PaymentMethod.WALLET, description="Phương thức thanh toán")
 
 
 class OfferReadWithDetails(OfferRead):

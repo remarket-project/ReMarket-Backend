@@ -131,6 +131,17 @@ class WebSocketManager:
         tasks = [self.send_to_user(uid, message) for uid in user_ids]
         await asyncio.gather(*tasks, return_exceptions=True)
 
+    async def broadcast_to_all(self, message: dict[str, Any]) -> None:
+        """
+        Gửi tin nhắn đến TẤT CẢ người dùng đang kết nối.
+
+        Args:
+            message: Dict tin nhắn (sẽ được chuyển thành JSON)
+        """
+        async with self._lock:
+            user_ids = list(self._user_connections.keys())
+        await self.broadcast_to_users(user_ids, message)
+
     def get_online_users(self) -> set[uuid.UUID]:
         """
         Lấy tập hợp UUID người dùng hiện đang kết nối.

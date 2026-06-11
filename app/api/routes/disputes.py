@@ -87,6 +87,7 @@ async def create_dispute(
         "type": "order_status_updated",
         "order_id": str(order.id),
     })
+    await ws_manager.broadcast_to_all({"type": "new_dispute"})
 
     return dispute
 

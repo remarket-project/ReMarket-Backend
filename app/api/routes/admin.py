@@ -16,7 +16,7 @@ from app.crud import (
     crud_order,
     crud_wallet,
 )
-from app.crud.crud_listing import get_listing, get_pending_listings
+from app.crud.crud_listing import get_listing, get_images_for_listings, get_pending_listings
 from app.crud.crud_user import get_user_by_id, get_users_list, update_user_status
 from app.models.enums import (
     EscrowStatus,
@@ -31,7 +31,7 @@ from app.models.user import User
 from app.models.wallet import WalletTransaction
 from app.schemas.dispute import DisputeRead
 from app.schemas.escrow import ResolveEscrowRequest
-from app.schemas.listing import ListingRead
+from app.schemas.listing import ListingRead, ListingWithImages
 from app.schemas.user import UserMe, UserStatusUpdate
 from app.services import stripe_connect
 
@@ -128,7 +128,7 @@ async def update_user_account_status(
     return updated_user
 
 
-@router.get("/listings/pending", response_model=list[ListingRead])
+@router.get("/listings/pending", response_model=list[ListingWithImages])
 async def get_pending_listings_route(
     db: SessionDep,
     admin_user: CurrentAdmin,
@@ -136,7 +136,21 @@ async def get_pending_listings_route(
     limit: int = 100
 ):
     """Admin: Danh sách bài đăng đang chờ duyệt"""
-    return await get_pending_listings(db, skip=skip, limit=limit)
+    listings = await get_pending_listings(db, skip=skip, limit=limit)
+
+    listing_ids = [item.id for item in listings]
+    images_by_listing = await get_images_for_listings(db, listing_ids)
+
+    result = []
+    for item in listings:
+        listing_dict = item.model_dump()
+        listing_dict["images"] = images_by_listing.get(item.id, [])
+        if getattr(item, "seller", None):
+            listing_dict["seller_name"] = item.seller.full_name
+            listing_dict["seller_avatar_url"] = item.seller.avatar_url
+        result.append(ListingWithImages(**listing_dict))
+
+    return result
 
 
 @router.post("/listings/{listing_id}/approve", response_model=ListingRead)
@@ -168,6 +182,13 @@ async def approve_listing(
         title="Bài đăng được duyệt",
         message=f"Bài đăng '{listing.title}' của bạn đã được duyệt.",
         data={"listing_id": str(listing.id)},
+    )
+    await ws_manager.send_to_user(
+        listing.seller_id,
+        {"type": "listing_approved", "listing_id": str(listing.id)},
+    )
+    await ws_manager.broadcast_to_all(
+        {"type": "listing_approved_broadcast", "listing_id": str(listing.id)},
     )
     await _log_admin_action(
         db,
@@ -215,6 +236,11 @@ async def reject_listing_route(
         message=message,
         data={"listing_id": str(listing.id), "reason": reason or ""},
     )
+    await ws_manager.send_to_user(
+        listing.seller_id,
+        {"type": "listing_rejected", "listing_id": str(listing.id), "reason": reason or ""},
+    )
+    await ws_manager.broadcast_to_all({"type": "listing_rejected_broadcast"})
     await _log_admin_action(
         db,
         admin_user,

@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from sqlalchemy import asc, delete, desc, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.models.enums import ListingStatus
 from app.models.listing import Listing, ListingImage
@@ -394,6 +394,7 @@ async def get_pending_listings(
     """Get all pending listings (for admin approval)."""
     result = await db.execute(
         select(Listing)
+        .options(selectinload(Listing.seller))
         .where(Listing.status == ListingStatus.PENDING)  # type: ignore[arg-type]
         .offset(skip)
         .limit(limit)

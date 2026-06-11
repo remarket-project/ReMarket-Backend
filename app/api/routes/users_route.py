@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import case, func, select
 
 from app.api.deps import CurrentAdmin, CurrentUser, SessionDep
+from app.core.websocket_manager import ws_manager
 from app.core.security import (
     get_password_hash,
     verify_password,
@@ -137,6 +138,10 @@ async def update_my_profile(
     updated_user = await crud_user.update_user(session, current_user.id, data)
     if not updated_user:
         raise HTTPException(status_code=404, detail="User not found")
+    await ws_manager.broadcast_to_all({
+        "type": "profile_updated",
+        "user_id": str(current_user.id),
+    })
     return UserPrivate.model_validate(updated_user)
 
 
