@@ -13,6 +13,7 @@ from sqlalchemy import select
 from app.api.deps import CurrentUser, SessionDep
 from app.core.websocket_manager import ws_manager
 from app.crud import crud_dispute, crud_notification, crud_order
+from app.crud.crud_user import get_admin_user_ids
 from app.models.dispute import Dispute
 from app.models.enums import NotificationType, OrderStatus
 from app.schemas.dispute import DisputeCreate, DisputeRead
@@ -87,7 +88,13 @@ async def create_dispute(
         "type": "order_status_updated",
         "order_id": str(order.id),
     })
-    await ws_manager.broadcast_to_all({"type": "new_dispute"})
+    admin_ids = await get_admin_user_ids(db)
+    if admin_ids:
+        await ws_manager.broadcast_to_users(admin_ids, {
+            "type": "order_status_updated",
+            "order_id": str(order.id),
+        })
+        await ws_manager.broadcast_to_users(admin_ids, {"type": "new_dispute"})
 
     return dispute
 

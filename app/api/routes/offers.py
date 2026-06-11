@@ -191,6 +191,15 @@ async def confirm_offer_order(
         "order_id": str(order.id),
     })
 
+    # WS: notify admins about new order
+    from app.crud.crud_user import get_admin_user_ids
+    admin_ids = await get_admin_user_ids(db)
+    if admin_ids:
+        await ws_manager.broadcast_to_users(admin_ids, {
+            "type": "new_order",
+            "order_id": str(order.id),
+        })
+
     await ws_manager.broadcast_to_all({
         "type": "listing_sold_broadcast",
         "listing_id": str(order.listing_id),

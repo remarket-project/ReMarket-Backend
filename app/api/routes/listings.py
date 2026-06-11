@@ -13,6 +13,7 @@ from app.api.deps import CurrentUser, SessionDep
 from app.core.config import settings
 from app.core.websocket_manager import ws_manager
 from app.crud import crud_category, crud_listing
+from app.crud.crud_user import get_admin_user_ids
 from app.models.enums import ListingStatus, OfferStatus
 from app.models.offer import Offer
 from app.models.user import UserRole
@@ -296,7 +297,9 @@ async def create_listing(
     except IntegrityError as err:
         await db.rollback()
         raise HTTPException(status_code=400, detail="ID danh mục không hợp lệ") from err
-    await ws_manager.broadcast_to_all({"type": "new_pending_listing"})
+    admin_ids = await get_admin_user_ids(db)
+    if admin_ids:
+        await ws_manager.broadcast_to_users(admin_ids, {"type": "new_pending_listing"})
     return new_listing
 
 

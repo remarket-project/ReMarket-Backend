@@ -17,7 +17,7 @@ from app.crud import (
     crud_wallet,
 )
 from app.crud.crud_listing import get_listing, get_images_for_listings, get_pending_listings
-from app.crud.crud_user import get_user_by_id, get_users_list, update_user_status
+from app.crud.crud_user import get_user_by_id, get_users_list, update_user_status, get_admin_user_ids
 from app.models.enums import (
     EscrowStatus,
     ListingStatus,
@@ -57,6 +57,13 @@ async def _log_admin_action(
         target_id=target_id,
         note=note,
     )
+
+
+async def _broadcast_to_admins(db: SessionDep, message: dict) -> None:
+    """Helper: gửi WebSocket message đến tất cả admin đang online."""
+    admin_ids = await get_admin_user_ids(db)
+    if admin_ids:
+        await ws_manager.broadcast_to_users(admin_ids, message)
 
 
 @router.get("/dashboard")
@@ -316,6 +323,9 @@ async def resolve_dispute(
         await ws_manager.send_to_user(order.seller_id, {
             "type": "order_status_updated", "order_id": str(dispute.order_id),
         })
+        await _broadcast_to_admins(db, {
+            "type": "order_status_updated", "order_id": str(dispute.order_id),
+        })
 
     return {
         "message": "Dispute resolved",
@@ -381,6 +391,9 @@ async def admin_ship_order(
     await ws_manager.send_to_user(order.seller_id, {
         "type": "order_status_updated", "order_id": str(order_id),
     })
+    await _broadcast_to_admins(db, {
+        "type": "order_status_updated", "order_id": str(order_id),
+    })
 
     return updated
 
@@ -422,6 +435,9 @@ async def admin_deliver_order(
     await ws_manager.send_to_user(order.seller_id, {
         "type": "order_status_updated", "order_id": str(order_id),
     })
+    await _broadcast_to_admins(db, {
+        "type": "order_status_updated", "order_id": str(order_id),
+    })
 
     return order
 
@@ -446,6 +462,9 @@ async def admin_return_order(
         "type": "order_status_updated", "order_id": str(order_id),
     })
     await ws_manager.send_to_user(order.seller_id, {
+        "type": "order_status_updated", "order_id": str(order_id),
+    })
+    await _broadcast_to_admins(db, {
         "type": "order_status_updated", "order_id": str(order_id),
     })
 
@@ -480,6 +499,9 @@ async def admin_returned_order(
     await ws_manager.send_to_user(order.seller_id, {
         "type": "order_status_updated", "order_id": str(order_id),
     })
+    await _broadcast_to_admins(db, {
+        "type": "order_status_updated", "order_id": str(order_id),
+    })
 
     return updated
 
@@ -502,6 +524,9 @@ async def admin_force_complete(
         "type": "order_status_updated", "order_id": str(order_id),
     })
     await ws_manager.send_to_user(order.seller_id, {
+        "type": "order_status_updated", "order_id": str(order_id),
+    })
+    await _broadcast_to_admins(db, {
         "type": "order_status_updated", "order_id": str(order_id),
     })
 
@@ -528,10 +553,16 @@ async def admin_force_cancel(
     await ws_manager.send_to_user(order.seller_id, {
         "type": "order_cancelled", "order_id": str(order_id),
     })
+    await _broadcast_to_admins(db, {
+        "type": "order_cancelled", "order_id": str(order_id),
+    })
     await ws_manager.send_to_user(order.buyer_id, {
         "type": "order_status_updated", "order_id": str(order_id),
     })
     await ws_manager.send_to_user(order.seller_id, {
+        "type": "order_status_updated", "order_id": str(order_id),
+    })
+    await _broadcast_to_admins(db, {
         "type": "order_status_updated", "order_id": str(order_id),
     })
 

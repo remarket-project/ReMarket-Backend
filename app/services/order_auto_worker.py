@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.crud.crud_order import complete_order, cancel_order
 from app.crud.crud_notification import create_notification
+from app.crud.crud_user import get_admin_user_ids
 from app.core.websocket_manager import ws_manager
 from app.models.enums import NotificationType
 from app.models.order import Order, OrderStatus
@@ -59,6 +60,13 @@ async def auto_complete_worker():
                         "type": "order_status_updated",
                         "order_id": str(order.id),
                     })
+                    async with AsyncSessionLocal() as admin_db:
+                        admin_ids = await get_admin_user_ids(admin_db)
+                        if admin_ids:
+                            await ws_manager.broadcast_to_users(admin_ids, {
+                                "type": "order_status_updated",
+                                "order_id": str(order.id),
+                            })
         except Exception as e:
             logger.error("Auto-complete worker error: %s", e)
         await asyncio.sleep(settings.ORDER_AUTO_CHECK_INTERVAL_SECONDS)
@@ -99,6 +107,13 @@ async def auto_cancel_pending_worker():
                         "type": "order_status_updated",
                         "order_id": str(order.id),
                     })
+                    async with AsyncSessionLocal() as admin_db:
+                        admin_ids = await get_admin_user_ids(admin_db)
+                        if admin_ids:
+                            await ws_manager.broadcast_to_users(admin_ids, {
+                                "type": "order_status_updated",
+                                "order_id": str(order.id),
+                            })
         except Exception as e:
             logger.error("Auto-cancel worker error: %s", e)
         await asyncio.sleep(settings.ORDER_AUTO_CHECK_INTERVAL_SECONDS)

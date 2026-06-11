@@ -259,3 +259,12 @@ async def update_user_ratings(db: AsyncSession, user_id: uuid.UUID) -> User | No
     await db.commit()
     await db.refresh(user)
     return user
+
+
+async def get_admin_user_ids(db: AsyncSession) -> list[uuid.UUID]:
+    """Get list of user IDs for admin users."""
+    from app.models.enums import UserRole
+    result = await db.execute(
+        select(User.id).where(User.role == UserRole.ADMIN)  # type: ignore[arg-type]
+    )
+    return list(result.scalars().all())
