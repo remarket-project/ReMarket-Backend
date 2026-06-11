@@ -243,10 +243,16 @@ async def update_offer_status(
             detail=f"Không thể thay đổi yêu cầu ở trạng thái: {offer.status}"
         )
 
-    if is_seller and offer.status != OfferStatus.PENDING:
+    if is_seller and offer.status not in {OfferStatus.PENDING, OfferStatus.COUNTERED}:
         raise HTTPException(
             status_code=400,
-            detail=f"Người bán chỉ có thể cập nhật yêu cầu PENDING. Trạng thái hiện tại: {offer.status}"
+            detail=f"Người bán chỉ có thể cập nhật yêu cầu PENDING hoặc COUNTERED. Trạng thái hiện tại: {offer.status}"
+        )
+
+    if is_seller and offer.status == OfferStatus.COUNTERED and offer.last_action_by == listing.seller_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Bạn đã phản hồi đề nghị này. Đang chờ người mua trả lời."
         )
 
     if is_seller and status_update.status not in {
@@ -257,10 +263,6 @@ async def update_offer_status(
         raise HTTPException(
             status_code=400, detail="Người bán chỉ có thể đặt ACCEPTED/REJECTED/COUNTERED")
 
-    if is_seller and status_update.status == OfferStatus.COUNTERED and status_update.offer_price is None:
-        raise HTTPException(
-            status_code=400, detail="Trạng thái COUNTERED cần có offer_price")
-
     if is_buyer:
         if offer.status == OfferStatus.PENDING:
             if status_update.status != OfferStatus.REJECTED:
@@ -269,10 +271,15 @@ async def update_offer_status(
                     detail="Người mua chỉ có thể hủy yêu cầu PENDING"
                 )
         elif offer.status == OfferStatus.COUNTERED:
-            if status_update.status not in {OfferStatus.ACCEPTED, OfferStatus.REJECTED}:
+            if status_update.status not in {OfferStatus.ACCEPTED, OfferStatus.REJECTED, OfferStatus.COUNTERED}:
                 raise HTTPException(
                     status_code=400,
-                    detail="Người mua chỉ có thể chấp nhận hoặc từ chối yêu cầu COUNTERED"
+                    detail="Người mua chỉ có thể chấp nhận, từ chối hoặc phản đề nghị yêu cầu COUNTERED"
+                )
+            if status_update.status == OfferStatus.COUNTERED and offer.last_action_by == offer.buyer_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Bạn đã phản hồi đề nghị này. Đang chờ người bán trả lời."
                 )
         elif offer.status == OfferStatus.ACCEPTED:
             if status_update.status != OfferStatus.REJECTED:
@@ -286,6 +293,10 @@ async def update_offer_status(
                 detail=f"Người mua không thể cập nhật yêu cầu với trạng thái: {offer.status}"
             )
 
+    if status_update.status == OfferStatus.COUNTERED and status_update.offer_price is None:
+        raise HTTPException(
+            status_code=400, detail="Trạng thái COUNTERED cần có offer_price")
+
     # Remove redundant check — CRUD handles listing.status validation with FOR UPDATE
     try:
         updated_offer, rejected_offers = await crud_offer.update_offer_status(
@@ -293,6 +304,7 @@ async def update_offer_status(
             offer_id,
             status_update.status,
             counter_price=status_update.offer_price,
+            acting_user_id=current_user.id,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

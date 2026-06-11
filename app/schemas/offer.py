@@ -27,6 +27,7 @@ class OfferRead(OfferBase):
     created_at: datetime
     updated_at: datetime
     order_id: uuid.UUID | None = None
+    last_action_by: uuid.UUID | None = None
 
     model_config = {"from_attributes": True}
 

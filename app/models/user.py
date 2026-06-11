@@ -165,7 +165,8 @@ class User(UserBase, table=True):
     listings: list["Listing"] = Relationship(
         back_populates="seller", cascade_delete=True)
     offers_made: list["Offer"] = Relationship(
-        back_populates="buyer", cascade_delete=True)
+        back_populates="buyer", cascade_delete=True,
+        sa_relationship_kwargs={"foreign_keys": "Offer.buyer_id"})
     orders_as_buyer: list["Order"] = Relationship(
         back_populates="buyer",
         cascade_delete=True,

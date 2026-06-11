@@ -44,6 +44,9 @@ class Offer(SQLModel, table=True):
     order_id: uuid.UUID | None = Field(
         default=None, foreign_key="orders.id", ondelete="SET NULL", nullable=True
     )
+    last_action_by: uuid.UUID | None = Field(
+        default=None, foreign_key="users.id", nullable=True
+    )
 
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
@@ -52,4 +55,7 @@ class Offer(SQLModel, table=True):
 
     # Relationships
     listing: "Listing" = Relationship(back_populates="offers")
-    buyer: "User" = Relationship(back_populates="offers_made")
+    buyer: "User" = Relationship(
+        back_populates="offers_made",
+        sa_relationship_kwargs={"foreign_keys": "Offer.buyer_id"},
+    )

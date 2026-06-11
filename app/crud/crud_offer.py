@@ -119,7 +119,8 @@ async def create_offer(
         listing_id=listing_id,
         buyer_id=buyer_id,
         offer_price=offer_price,
-        status=OfferStatus.PENDING
+        status=OfferStatus.PENDING,
+        last_action_by=buyer_id,
     )
     db.add(db_obj)
     await db.commit()
@@ -194,6 +195,7 @@ async def update_offer_status(
     offer_id: uuid.UUID,
     new_status: OfferStatus,
     counter_price=None,
+    acting_user_id: uuid.UUID | None = None,
 ) -> tuple[Offer, list[Offer]]:
     """Update offer status — FIXED race condition with FOR UPDATE on offer + listing."""
     # Lock offer row
@@ -214,6 +216,8 @@ async def update_offer_status(
 
     offer.status = new_status
     offer.updated_at = utc_now()
+    if acting_user_id is not None:
+        offer.last_action_by = acting_user_id
 
     # If buyer rejects an ACCEPTED offer, revert listing to ACTIVE
     if offer.status == OfferStatus.REJECTED:
