@@ -7,6 +7,7 @@ and Stripe Payout withdrawals (for sellers with connected accounts).
 from datetime import datetime, timezone
 from decimal import Decimal
 
+import stripe
 import sqlalchemy
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -131,12 +132,15 @@ async def withdraw(
     if not locked_wallet or locked_wallet.balance < data.amount:
         raise HTTPException(status_code=400, detail="Số dư không đủ")
 
-    transfer = await stripe_connect.transfer_to_connected_account(
-        amount_vnd=data.amount,
-        destination_account_id=current_user.stripe_account_id,
-        order_id=str(current_user.id),
-        description=f"Wallet withdrawal: {data.amount:,.0f} VND",
-    )
+    try:
+        transfer = await stripe_connect.transfer_to_connected_account(
+            amount_vnd=data.amount,
+            destination_account_id=current_user.stripe_account_id,
+            order_id=str(current_user.id),
+            description=f"Wallet withdrawal: {data.amount:,.0f} VND",
+        )
+    except stripe.InvalidRequestError as e:
+        raise HTTPException(status_code=400, detail=f"Stripe: {e.error.message}")
 
     balance_before = locked_wallet.balance
     locked_wallet.balance -= data.amount

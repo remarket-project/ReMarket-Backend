@@ -168,16 +168,38 @@ async def transfer_to_connected_account(
     """
     amount_cents = vnd_to_usd_cents(amount_vnd)
 
-    transfer = stripe.Transfer.create(
-        amount=amount_cents,
-        currency=STRIPE_CURRENCY,
-        destination=destination_account_id,
-        description=description or f"Payment for order {order_id}",
-        metadata={
+    transfer_kwargs: dict[str, Any] = {
+        "amount": amount_cents,
+        "currency": STRIPE_CURRENCY,
+        "destination": destination_account_id,
+        "description": description or f"Payment for order {order_id}",
+        "metadata": {
             "order_id": order_id,
             "type": "escrow_release",
         },
-    )
+    }
+
+    # In test mode, if platform has insufficient balance, create a charge first
+    # and link it via source_transaction to bypass the available balance check
+    if stripe.api_key.startswith("sk_test_"):
+        balance = stripe.Balance.retrieve()
+        available_usd = sum(
+            b["amount"] for b in balance["available"] if b["currency"] == STRIPE_CURRENCY
+        )
+        if available_usd < amount_cents:
+            charge = stripe.Charge.create(
+                amount=amount_cents,
+                currency=STRIPE_CURRENCY,
+                source="tok_visa",
+                description=f"Test top-up for transfer to {destination_account_id}",
+            )
+            transfer_kwargs["source_transaction"] = charge.id
+            logger.info(
+                "Created charge %s (%s cents) as source for test transfer",
+                charge.id, amount_cents,
+            )
+
+    transfer = stripe.Transfer.create(**transfer_kwargs)
 
     logger.info(
         "Transfer %s: %s cents to account %s (order %s)",
