@@ -6,7 +6,7 @@ Handles listing creation, retrieval, updates, and searches with image handling.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import asc, delete, desc, func, or_, update
+from sqlalchemy import asc, case, delete, desc, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload, selectinload
@@ -215,7 +215,7 @@ async def search_listings(
     limit: int = 100
 ) -> tuple[list[Listing], int]:
     """Search listings with filters."""
-    query = select(Listing).options(joinedload(Listing.seller))  # type: ignore[arg-type]
+    query = select(Listing).options(selectinload(Listing.seller))  # type: ignore[arg-type]
     count_query = select(func.count()).select_from(Listing)
 
     conditions = []
@@ -300,7 +300,7 @@ async def get_related_listings(
 
     result = await db.execute(
         select(Listing)
-        .options(joinedload(Listing.seller))  # type: ignore[arg-type]
+        .options(selectinload(Listing.seller))  # type: ignore[arg-type]
         .where(
             Listing.status == ListingStatus.ACTIVE,  # type: ignore[arg-type]
             Listing.id != listing.id,  # type: ignore[arg-type]
@@ -338,35 +338,51 @@ async def get_price_band_summary(
     db: AsyncSession,
     category_id: str | None = None,
 ) -> list[dict[str, object]]:
-    bands = [
-        {"label": "Dưới 1 triệu", "min_price": 0, "max_price": 1_000_000},
-        {"label": "1 - 3 triệu", "min_price": 1_000_000, "max_price": 3_000_000},
-        {"label": "3 - 5 triệu", "min_price": 3_000_000, "max_price": 5_000_000},
-        {"label": "5 - 10 triệu", "min_price": 5_000_000, "max_price": 10_000_000},
-        {"label": "Trên 10 triệu", "min_price": 10_000_000, "max_price": None},
-    ]
+    from app.core.cache import price_band_cache
+
+    cache_key = f"price_bands_{category_id or 'all'}"
+    if cached := price_band_cache.get(cache_key):
+        return cached
 
     base_filters = [Listing.status == ListingStatus.ACTIVE]  # type: ignore[arg-type]
     if category_id:
         base_filters.append(Listing.category_id == _to_uuid(category_id))  # type: ignore[arg-type]
 
-    summary: list[dict[str, object]] = []
-    for band in bands:
-        band_filters = list(base_filters)
-        if band["min_price"] is not None:
-            band_filters.append(Listing.price >= band["min_price"])  # type: ignore[arg-type]
-        if band["max_price"] is not None:
-            band_filters.append(Listing.price < band["max_price"])  # type: ignore[arg-type]
+    case_statement = case(
+        (Listing.price < 1_000_000, "under_1m"),
+        (Listing.price.between(1_000_000, 2_999_999), "1m_to_3m"),
+        (Listing.price.between(3_000_000, 4_999_999), "3m_to_5m"),
+        (Listing.price.between(5_000_000, 9_999_999), "5m_to_10m"),
+        else_="over_10m",
+    )
 
-        count_result = await db.execute(
-            select(func.count()).select_from(Listing).where(*band_filters)  # type: ignore[arg-type]
+    result = await db.execute(
+        select(
+            case_statement.label("band"),
+            func.count().label("count"),
         )
-        summary.append({
-            **band,
-            "count": count_result.scalar_one(),
-        })
+        .select_from(Listing)
+        .where(*base_filters)
+        .group_by("band")
+    )
+    rows = result.all()
+    band_map = {row.band: row.count for row in rows}
 
-    return summary
+    bands_meta = [
+        {"label": "Dưới 1 triệu", "key": "under_1m", "min_price": 0, "max_price": 1_000_000},
+        {"label": "1 - 3 triệu", "key": "1m_to_3m", "min_price": 1_000_000, "max_price": 3_000_000},
+        {"label": "3 - 5 triệu", "key": "3m_to_5m", "min_price": 3_000_000, "max_price": 5_000_000},
+        {"label": "5 - 10 triệu", "key": "5m_to_10m", "min_price": 5_000_000, "max_price": 10_000_000},
+        {"label": "Trên 10 triệu", "key": "over_10m", "min_price": 10_000_000, "max_price": None},
+    ]
+
+    result_list = [
+        {**b, "count": band_map.get(b["key"], 0)}
+        for b in bands_meta
+    ]
+
+    price_band_cache[cache_key] = result_list
+    return result_list
 
 
 async def get_listing_image(

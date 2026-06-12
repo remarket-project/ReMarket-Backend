@@ -69,7 +69,9 @@ async def _fetch_listing_with_images(db: SessionDep, listing_id: uuid.UUID) -> L
 
 @router.get("", response_model=ListingPaginated, include_in_schema=False)
 @router.get("/", response_model=ListingPaginated)
+@limiter.limit("30/minute")
 async def list_listings(
+    request: Request,
     db: SessionDep,
     keyword: str | None = None,
     category_id: uuid.UUID | None = None,

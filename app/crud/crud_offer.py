@@ -130,7 +130,6 @@ async def create_offer(
 
 async def get_offer_by_id(db: AsyncSession, offer_id: uuid.UUID) -> Offer | None:
     """Get offer by ID."""
-    await expire_stale_offers(db)
     result = await db.execute(select(Offer).where(Offer.id == offer_id))  # type: ignore[arg-type]
     return result.scalar_one_or_none()
 
@@ -142,7 +141,6 @@ async def get_user_sent_offers(
     limit: int = 10
 ) -> list[Offer]:
     """Get offers sent by buyer."""
-    await expire_stale_offers(db)
     result = await db.execute(
         select(Offer)
         .where(Offer.buyer_id == buyer_id)  # type: ignore[arg-type]
@@ -160,7 +158,6 @@ async def get_seller_received_offers(
     limit: int = 10
 ) -> list[Offer]:
     """Get offers received by seller on all their listings."""
-    await expire_stale_offers(db)
     result = await db.execute(
         select(Offer)
         .join(Listing)
@@ -179,7 +176,6 @@ async def get_offers_by_listing(
     limit: int = 10
 ) -> list[Offer]:
     """Get all offers for a listing."""
-    await expire_stale_offers(db)
     result = await db.execute(
         select(Offer)
         .where(Offer.listing_id == listing_id)  # type: ignore[arg-type]

@@ -14,7 +14,7 @@ class SavedListing(SQLModel, table=True):
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     user_id: uuid.UUID = Field(foreign_key="users.id")
-    listing_id: uuid.UUID = Field(foreign_key="listings.id")
+    listing_id: uuid.UUID = Field(foreign_key="listings.id", index=True)
     saved_at: datetime = Field(default_factory=now)
 
 
@@ -23,5 +23,5 @@ class FollowSeller(SQLModel, table=True):
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     follower_id: uuid.UUID = Field(foreign_key="users.id")
-    followee_id: uuid.UUID = Field(foreign_key="users.id")
+    followee_id: uuid.UUID = Field(foreign_key="users.id", index=True)
     created_at: datetime = Field(default_factory=now)

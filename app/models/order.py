@@ -23,7 +23,7 @@ class Order(BaseUUID, table=True):
 
     buyer_id: uuid.UUID = Field(foreign_key="users.id", nullable=False, index=True)
     seller_id: uuid.UUID = Field(foreign_key="users.id", nullable=False, index=True)
-    listing_id: uuid.UUID = Field(foreign_key="listings.id", nullable=False)
+    listing_id: uuid.UUID = Field(foreign_key="listings.id", nullable=False, index=True)
     offer_id: uuid.UUID | None = Field(
         default=None, foreign_key="offers.id", nullable=True
     )

@@ -184,6 +184,7 @@ def confirm_webhook(webhook_url: str) -> bool:
             "x-api-key": settings.PAYOS_API_KEY,  # type: ignore[arg-type]
             "Content-Type": "application/json",
         },
+        timeout=15,
     )
     resp.raise_for_status()
     return resp.json().get("code") == "00"

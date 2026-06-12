@@ -25,19 +25,20 @@ class ListingBase(SQLModel):
     price: Decimal = Field(max_digits=15, decimal_places=2)
     is_negotiable: bool = Field(default=True)
     condition_grade: ConditionGrade
-    status: ListingStatus = Field(default=ListingStatus.PENDING)
+    status: ListingStatus = Field(default=ListingStatus.PENDING, index=True)
 
 
 class Listing(ListingBase, table=True):
     __tablename__ = "listings" # type: ignore
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    seller_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE")
-    category_id: uuid.UUID = Field(foreign_key="categories.id")
+    seller_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
+    category_id: uuid.UUID = Field(foreign_key="categories.id", index=True)
 
     created_at: datetime = Field(  # type: ignore[call-overload]
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),
+        index=True,
     )
     updated_at: datetime = Field(  # type: ignore[call-overload]
         default_factory=get_datetime_utc,

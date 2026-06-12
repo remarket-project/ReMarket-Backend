@@ -2,8 +2,10 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.api.deps import CurrentUser, SessionDep
 from app.crud import crud_listing, crud_saved_follow, crud_user
@@ -13,6 +15,7 @@ from app.models.user import UserPublic
 from app.schemas.listing import ListingWithImages
 
 router = APIRouter(tags=["Social"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 class SavedListingItem(BaseModel):
@@ -72,8 +75,10 @@ async def list_saved_listings(
 
 
 @router.post("/saved-listings/{listing_id}", response_model=SavedListingItem, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 async def save_listing(
     listing_id: uuid.UUID,
+    request: Request,
     current_user: CurrentUser,
     db: SessionDep,
 ):
@@ -95,8 +100,10 @@ async def save_listing(
 
 
 @router.delete("/saved-listings/{listing_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/minute")
 async def unsave_listing(
     listing_id: uuid.UUID,
+    request: Request,
     current_user: CurrentUser,
     db: SessionDep,
 ):
@@ -130,8 +137,10 @@ async def list_followed_sellers(
 
 
 @router.post("/followed-sellers/{seller_id}", response_model=FollowedSellerItem, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 async def follow_seller(
     seller_id: uuid.UUID,
+    request: Request,
     current_user: CurrentUser,
     db: SessionDep,
 ):
@@ -154,8 +163,10 @@ async def follow_seller(
 
 
 @router.delete("/followed-sellers/{seller_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/minute")
 async def unfollow_seller(
     seller_id: uuid.UUID,
+    request: Request,
     current_user: CurrentUser,
     db: SessionDep,
 ):

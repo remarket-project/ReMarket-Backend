@@ -72,25 +72,35 @@ async def get_dashboard_stats(
     admin_user: CurrentAdmin,
 ):
     """Admin: tổng quan nhanh hệ thống cho dashboard."""
-    total_users = (await db.execute(select(func.count()).select_from(User))).scalar_one()
-    total_listings = (await db.execute(select(func.count()).select_from(Listing))).scalar_one()
-    total_orders = (await db.execute(select(func.count()).select_from(Order))).scalar_one()
+    from app.core.cache import stats_cache
+
+    cache_key = "admin_dashboard_stats"
+    if cached := stats_cache.get(cache_key):
+        return cached
+
+    import asyncio
     from app.models.dispute import Dispute
 
-    contested_disputes = (
-        await db.execute(
-            select(func.count())
-            .select_from(Dispute)
-            .where(Dispute.status == "open")  # type: ignore[arg-type]
-        )
-    ).scalar_one()
+    count_users = db.execute(select(func.count()).select_from(User))
+    count_listings = db.execute(select(func.count()).select_from(Listing))
+    count_orders = db.execute(select(func.count()).select_from(Order))
+    count_disputes = db.execute(
+        select(func.count()).select_from(Dispute).where(Dispute.status == "open")
+    )
 
-    return {
-        "total_users": total_users,
-        "total_listings": total_listings,
-        "total_orders": total_orders,
-        "disputed_escrows": contested_disputes,
+    results = await asyncio.gather(
+        count_users, count_listings, count_orders, count_disputes,
+    )
+
+    stats = {
+        "total_users": results[0].scalar_one(),
+        "total_listings": results[1].scalar_one(),
+        "total_orders": results[2].scalar_one(),
+        "disputed_escrows": results[3].scalar_one(),
     }
+
+    stats_cache[cache_key] = stats
+    return stats
 
 
 @router.get("/users", response_model=list[UserMe])

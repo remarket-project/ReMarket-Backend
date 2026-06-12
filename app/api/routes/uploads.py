@@ -1,14 +1,17 @@
 import os
 import uuid
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.api.deps import CurrentUser
 from app.core.config import settings
 from app.services.minio_service import get_minio_service
 
 router = APIRouter(prefix="/upload", tags=["Upload"])
+limiter = Limiter(key_func=get_remote_address)
 
 ABS_UPLOAD_DIR = os.path.abspath(settings.UPLOAD_DIR)
 os.makedirs(ABS_UPLOAD_DIR, exist_ok=True)
@@ -18,7 +21,8 @@ ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 
 @router.post("")
-async def upload_file(current_user: CurrentUser, file: UploadFile = File(...)):
+@limiter.limit("10/minute")
+async def upload_file(request: Request, current_user: CurrentUser, file: UploadFile = File(...)):
     if file.content_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(status_code=400, detail="Unsupported file type")
 

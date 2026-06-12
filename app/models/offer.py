@@ -35,11 +35,11 @@ class Offer(SQLModel, table=True):
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     listing_id: uuid.UUID = Field(
-        foreign_key="listings.id", ondelete="CASCADE")
-    buyer_id: uuid.UUID = Field(foreign_key="users.id")
+        foreign_key="listings.id", ondelete="CASCADE", index=True)
+    buyer_id: uuid.UUID = Field(foreign_key="users.id", index=True)
     offer_price: Decimal = Field(decimal_places=2, max_digits=12)
     status: OfferStatus = Field(
-        default=OfferStatus.PENDING, sa_column=Column(String(50))
+        default=OfferStatus.PENDING, sa_column=Column(String(50), index=True)
     )
     order_id: uuid.UUID | None = Field(
         default=None, foreign_key="orders.id", ondelete="SET NULL", nullable=True

@@ -2,17 +2,20 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.api.deps import CurrentUser, SessionDep
 from app.core.websocket_manager import ws_manager
-from app.crud import crud_chat, crud_listing, crud_notification
+from app.crud import crud_chat, crud_listing
 from app.models.chat import Message as ChatMessage
 from app.models.listing import Listing
 from app.schemas.listing import ListingWithImages
 
 router = APIRouter(prefix="/chats", tags=["Chats"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 class ChatMessageRead(BaseModel):
@@ -85,7 +88,48 @@ async def list_my_conversations(
     limit: int = Query(20, ge=1, le=100),
 ):
     conversations, _ = await crud_chat.get_user_conversations(db, current_user.id, skip=skip, limit=limit)
-    return [await _build_conversation_payload(db, conversation) for conversation in conversations]
+
+    if not conversations:
+        return []
+
+    conv_ids = [c.id for c in conversations]
+
+    # Batch-load participants (2 queries instead of N)
+    participants_by_conv = await crud_chat.get_conversation_participants_batch(db, conv_ids)
+
+    # Batch-load latest messages (1 window-function query instead of N)
+    latest_msgs = await crud_chat.get_conversation_latest_messages_batch(db, conv_ids)
+
+    # Batch-load real message counts
+    msg_counts = await crud_chat.get_conversation_message_counts_batch(db, conv_ids)
+
+    # Batch-load listings + images
+    listing_ids = [c.listing_id for c in conversations if c.listing_id]
+    listings_map: dict[uuid.UUID, ListingWithImages | None] = {}
+    if listing_ids:
+        for lid in listing_ids:
+            listing = await crud_listing.get_listing(db, str(lid))
+            if listing:
+                images = await crud_listing.get_listing_images(db, str(listing.id))
+                listings_map[lid] = _build_listing_payload(listing, images)
+            else:
+                listings_map[lid] = None
+
+    payloads = []
+    for conv in conversations:
+        participants = participants_by_conv.get(conv.id, [])
+        last_message = latest_msgs.get(conv.id)
+        payloads.append(ChatConversationRead(
+            id=conv.id,
+            listing_id=conv.listing_id,
+            created_at=conv.created_at,
+            participant_ids=[p.user_id for p in participants],
+            messages_count=msg_counts.get(conv.id, 0),
+            last_message=_build_message_payload(last_message) if last_message else None,
+            listing=listings_map.get(conv.listing_id) if conv.listing_id else None,
+        ))
+
+    return payloads
 
 
 @router.post("/conversations/listing/{listing_id}", response_model=ChatConversationRead, status_code=status.HTTP_201_CREATED)
@@ -135,6 +179,8 @@ async def list_messages(
     conversation_id: uuid.UUID,
     current_user: CurrentUser,
     db: SessionDep,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
 ):
     conversation = await crud_chat.get_conversation_by_id(db, conversation_id)
     if not conversation:
@@ -145,14 +191,16 @@ async def list_messages(
         raise HTTPException(
             status_code=403, detail="Không có quyền truy cập cuộc trò chuyện này")
 
-    messages = await crud_chat.get_conversation_messages(db, conversation_id)
+    messages = await crud_chat.get_conversation_messages(db, conversation_id, skip=skip, limit=limit)
     return [_build_message_payload(message) for message in messages]
 
 
 @router.post("/conversations/{conversation_id}/messages", response_model=ChatMessageRead, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 async def send_message(
     conversation_id: uuid.UUID,
     payload: ChatMessageCreate,
+    request: Request,
     current_user: CurrentUser,
     db: SessionDep,
 ):
@@ -189,32 +237,5 @@ async def send_message(
     for participant in participants:
         if participant.user_id != current_user.id:
             await ws_manager.send_to_user(participant.user_id, ws_message)
-
-            listing_title = "sản phẩm"
-            if conversation.listing_id:
-                listing_obj = await crud_listing.get_listing(db, str(conversation.listing_id))
-                listing_title = listing_obj.title if listing_obj else "sản phẩm"
-
-            notif = await crud_notification.create_notification(
-                db,
-                user_id=participant.user_id,
-                type="offer_received",
-                title=f"Tin nhắn mới từ {current_user.full_name}",
-                message=f"{current_user.full_name} đã gửi tin nhắn về {listing_title}",
-                data={
-                    "conversation_id": str(conversation.id),
-                    "listing_id": str(conversation.listing_id) if conversation.listing_id else None,
-                    "sender_name": current_user.full_name,
-                },
-            )
-            await ws_manager.send_to_user(participant.user_id, {
-                "type": "notification",
-                "title": f"Tin nhắn mới từ {current_user.full_name}",
-                "message": f"{current_user.full_name} đã gửi tin nhắn về {listing_title}",
-                "notification_id": str(notif.id),
-                "data": {
-                    "conversation_id": str(conversation.id),
-                },
-            })
 
     return _build_message_payload(message)

@@ -19,14 +19,14 @@ class Notification(SQLModel, table=True):
     __tablename__ = "notifications" # type: ignore
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE")
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
     type: NotificationType = Field(sa_column=Column(String(50)))
     title: str = Field(max_length=255)
     message: str
     data: dict[str, Any] = Field(
         default_factory=dict, sa_column=Column(JSON)
     )
-    is_read: bool = Field(default=False)
+    is_read: bool = Field(default=False, index=True)
 
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
