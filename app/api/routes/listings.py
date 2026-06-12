@@ -49,8 +49,13 @@ def _listing_with_images_payload(listing, images):
     listing_dict = listing.model_dump()
     listing_dict["images"] = images
     if getattr(listing, "seller", None):
-        listing_dict["seller_name"] = listing.seller.full_name
-        listing_dict["seller_avatar_url"] = listing.seller.avatar_url
+        seller = listing.seller
+        listing_dict["seller_name"] = seller.full_name
+        listing_dict["seller_avatar_url"] = seller.avatar_url
+        parts = [seller.address_detail, seller.ward, seller.district, seller.province]
+        parts = [p for p in parts if p]
+        if parts:
+            listing_dict["seller_location_summary"] = ", ".join(parts)
     return ListingWithImages(**listing_dict)
 
 
@@ -292,7 +297,8 @@ async def create_listing(
             is_negotiable=data.is_negotiable,
             condition_grade=data.condition_grade,
             seller_id=str(current_user.id),
-            category_id=str(data.category_id)
+            category_id=str(data.category_id),
+            location_summary=data.location_summary,
         )
     except IntegrityError as err:
         await db.rollback()

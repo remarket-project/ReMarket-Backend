@@ -28,7 +28,8 @@ async def create_listing(
     is_negotiable: bool,
     condition_grade,
     seller_id: str,
-    category_id: str
+    category_id: str,
+    location_summary: str | None = None
 ) -> Listing:
     """Create a new listing."""
     db_obj = Listing(
@@ -39,6 +40,7 @@ async def create_listing(
         condition_grade=condition_grade,
         seller_id=uuid.UUID(seller_id),
         category_id=uuid.UUID(category_id),
+        location_summary=location_summary,
         status=ListingStatus.PENDING
     )
     db.add(db_obj)

@@ -17,7 +17,7 @@ class ListingBase(BaseModel):
 
 
 class ListingCreate(ListingBase):
-    pass
+    location_summary: str | None = None
 
 
 class ListingUpdate(BaseModel):
@@ -66,6 +66,7 @@ class ListingWithImages(ListingRead):
     images: list[ListingImageRead] = []
     seller_name: str | None = None
     seller_avatar_url: str | None = None
+    seller_location_summary: str | None = None
 
     model_config = {"from_attributes": True}
 
