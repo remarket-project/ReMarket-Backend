@@ -179,6 +179,7 @@ async def handle_webhook_event(
     handlers = {
         "payment_intent.succeeded": _handle_payment_succeeded,
         "payment_intent.payment_failed": _handle_payment_failed,
+        "transfer.created": _handle_transfer_created,
         "payout.paid": _handle_payout_paid,
         "payout.failed": _handle_payout_failed,
     }
@@ -276,6 +277,34 @@ async def _handle_payment_failed(
         await db.commit()
 
     logger.warning("Payment failed: PI %s", payment_intent.id)
+
+
+async def _handle_transfer_created(
+    transfer: stripe.Transfer,
+    db: Any,
+) -> None:
+    """Handle transfer.created — mark withdrawal as completed."""
+    cond: Any = WalletTransaction.stripe_transfer_id == transfer.id
+    tx_result = await db.execute(select(WalletTransaction).where(cond))
+    tx = tx_result.scalar_one_or_none()
+    if tx and tx.status == "pending":
+        tx.status = "completed"
+        tx.type = TransactionType.WITHDRAW_COMPLETED.value
+        db.add(tx)
+        await db.commit()
+
+        from app.core.websocket_manager import ws_manager
+        wallet_result = await db.execute(
+            select(Wallet).where(Wallet.id == tx.wallet_id)
+        )
+        wallet = wallet_result.scalar_one_or_none()
+        if wallet:
+            await ws_manager.send_to_user(wallet.user_id, {
+                "type": "wallet_balance",
+                "user_id": str(wallet.user_id),
+            })
+
+        logger.info("Withdraw completed: tx %s (transfer %s)", tx.id, transfer.id)
 
 
 async def _handle_payout_paid(
