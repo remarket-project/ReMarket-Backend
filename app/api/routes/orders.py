@@ -405,18 +405,22 @@ async def cancel_order(
     await ws_manager.send_to_user(order.buyer_id, {
         "type": "order_cancelled",
         "order_id": str(order.id),
+        "listing_id": str(order.listing_id),
     })
     await ws_manager.send_to_user(order.seller_id, {
         "type": "order_cancelled",
         "order_id": str(order.id),
+        "listing_id": str(order.listing_id),
     })
     await ws_manager.send_to_user(order.buyer_id, {
         "type": "order_status_updated",
         "order_id": str(order.id),
+        "listing_id": str(order.listing_id),
     })
     await ws_manager.send_to_user(order.seller_id, {
         "type": "order_status_updated",
         "order_id": str(order.id),
+        "listing_id": str(order.listing_id),
     })
 
     return updated_order

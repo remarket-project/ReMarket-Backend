@@ -558,22 +558,22 @@ async def admin_force_cancel(
     await _log_admin_action(db, admin_user, "order_force_cancelled", "order", str(order_id))
 
     await ws_manager.send_to_user(order.buyer_id, {
-        "type": "order_cancelled", "order_id": str(order_id),
+        "type": "order_cancelled", "order_id": str(order_id), "listing_id": str(order.listing_id),
     })
     await ws_manager.send_to_user(order.seller_id, {
-        "type": "order_cancelled", "order_id": str(order_id),
+        "type": "order_cancelled", "order_id": str(order_id), "listing_id": str(order.listing_id),
     })
     await _broadcast_to_admins(db, {
-        "type": "order_cancelled", "order_id": str(order_id),
+        "type": "order_cancelled", "order_id": str(order_id), "listing_id": str(order.listing_id),
     })
     await ws_manager.send_to_user(order.buyer_id, {
-        "type": "order_status_updated", "order_id": str(order_id),
+        "type": "order_status_updated", "order_id": str(order_id), "listing_id": str(order.listing_id),
     })
     await ws_manager.send_to_user(order.seller_id, {
-        "type": "order_status_updated", "order_id": str(order_id),
+        "type": "order_status_updated", "order_id": str(order_id), "listing_id": str(order.listing_id),
     })
     await _broadcast_to_admins(db, {
-        "type": "order_status_updated", "order_id": str(order_id),
+        "type": "order_status_updated", "order_id": str(order_id), "listing_id": str(order.listing_id),
     })
 
     return updated

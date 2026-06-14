@@ -102,10 +102,12 @@ async def auto_cancel_pending_worker():
                     await ws_manager.send_to_user(order.buyer_id, {
                         "type": "order_status_updated",
                         "order_id": str(order.id),
+                        "listing_id": str(order.listing_id),
                     })
                     await ws_manager.send_to_user(order.seller_id, {
                         "type": "order_status_updated",
                         "order_id": str(order.id),
+                        "listing_id": str(order.listing_id),
                     })
                     async with AsyncSessionLocal() as admin_db:
                         admin_ids = await get_admin_user_ids(admin_db)
@@ -113,6 +115,7 @@ async def auto_cancel_pending_worker():
                             await ws_manager.broadcast_to_users(admin_ids, {
                                 "type": "order_status_updated",
                                 "order_id": str(order.id),
+                                "listing_id": str(order.listing_id),
                             })
         except Exception as e:
             logger.error("Auto-cancel worker error: %s", e)
