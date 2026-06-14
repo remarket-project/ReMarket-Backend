@@ -172,7 +172,7 @@ async def get_conversation_participants_batch(
     result = await db.execute(
         select(ConversationParticipant)
         .where(ConversationParticipant.conversation_id.in_(conversation_ids))  # type: ignore[arg-type]
-        .order_by(asc(ConversationParticipant.joined_at))
+        .order_by(asc(ConversationParticipant.joined_at))  # type: ignore[arg-type]
     )
     participants_by_conv: dict[uuid.UUID, list[ConversationParticipant]] = {}
     for p in result.scalars().all():
@@ -193,11 +193,11 @@ async def get_conversation_latest_messages_batch(
 
     # Subquery: max created_at per conversation
     subq = (
-        select(
-            Message.conversation_id,
+        select(  # type: ignore[no-matching-overload]
+            Message.conversation_id,  # type: ignore[arg-type]
             func.max(Message.created_at).label("max_created"),
         )
-        .where(Message.conversation_id.in_(conversation_ids))
+        .where(Message.conversation_id.in_(conversation_ids))  # type: ignore[arg-type]
         .group_by(Message.conversation_id)
     ).subquery()
 
@@ -221,11 +221,11 @@ async def get_conversation_message_counts_batch(
 ) -> dict[uuid.UUID, int]:
     """Batch-load the total message count for multiple conversations."""
     result = await db.execute(
-        select(
-            Message.conversation_id,
-            func.count(Message.id).label("msg_count"),
+        select(  # type: ignore[no-matching-overload]
+            Message.conversation_id,  # type: ignore[arg-type]
+            func.count(Message.id).label("msg_count"),  # type: ignore[arg-type]
         )
-        .where(Message.conversation_id.in_(conversation_ids))
+        .where(Message.conversation_id.in_(conversation_ids))  # type: ignore[arg-type]
         .group_by(Message.conversation_id)
     )
     counts = {row[0]: row[1] for row in result}

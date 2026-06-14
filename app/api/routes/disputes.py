@@ -63,8 +63,8 @@ async def create_dispute(
     # Re-fetch dispute with evidence loaded for response serialization
     result = await db.execute(
         select(Dispute)
-        .options(selectinload(Dispute.evidence))
-        .where(Dispute.id == dispute.id)
+        .options(selectinload(Dispute.evidence))  # type: ignore[arg-type]
+        .where(Dispute.id == dispute.id)  # type: ignore[arg-type]
     )
     dispute = result.scalar_one()
 

@@ -349,10 +349,10 @@ async def get_price_band_summary(
         base_filters.append(Listing.category_id == _to_uuid(category_id))  # type: ignore[arg-type]
 
     case_statement = case(
-        (Listing.price < 1_000_000, "under_1m"),
-        (Listing.price.between(1_000_000, 2_999_999), "1m_to_3m"),
-        (Listing.price.between(3_000_000, 4_999_999), "3m_to_5m"),
-        (Listing.price.between(5_000_000, 9_999_999), "5m_to_10m"),
+        (Listing.price < 1_000_000, "under_1m"),  # type: ignore[arg-type,operator]
+        (Listing.price.between(1_000_000, 2_999_999), "1m_to_3m"),  # type: ignore[arg-type,operator]
+        (Listing.price.between(3_000_000, 4_999_999), "3m_to_5m"),  # type: ignore[arg-type,operator]
+        (Listing.price.between(5_000_000, 9_999_999), "5m_to_10m"),  # type: ignore[arg-type,operator]
         else_="over_10m",
     )
 
@@ -362,7 +362,7 @@ async def get_price_band_summary(
             func.count().label("count"),
         )
         .select_from(Listing)
-        .where(*base_filters)
+        .where(*base_filters)  # type: ignore[arg-type]
         .group_by("band")
     )
     rows = result.all()
@@ -412,7 +412,7 @@ async def get_pending_listings(
     """Get all pending listings (for admin approval)."""
     result = await db.execute(
         select(Listing)
-        .options(selectinload(Listing.seller))
+        .options(selectinload(Listing.seller))  # type: ignore[arg-type]
         .where(Listing.status == ListingStatus.PENDING)  # type: ignore[arg-type]
         .offset(skip)
         .limit(limit)

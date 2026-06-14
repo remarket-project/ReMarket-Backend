@@ -181,7 +181,7 @@ async def transfer_to_connected_account(
 
     # In test mode, if platform has insufficient balance, create a charge first
     # and link it via source_transaction to bypass the available balance check
-    if stripe.api_key.startswith("sk_test_"):
+    if stripe.api_key and stripe.api_key.startswith("sk_test_"):
         balance = stripe.Balance.retrieve()
         available_usd = sum(
             b["amount"] for b in balance["available"] if b["currency"] == STRIPE_CURRENCY

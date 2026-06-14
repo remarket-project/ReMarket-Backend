@@ -46,7 +46,7 @@ async def expire_stale_offers(db: AsyncSession) -> int:
         select(Offer).where(
             and_(
                 Offer.created_at <= cutoff_accepted,  # type: ignore[arg-type]
-                Offer.status == OfferStatus.ACCEPTED,
+                Offer.status == OfferStatus.ACCEPTED,  # type: ignore[arg-type]
             )
         )
     )
@@ -67,7 +67,7 @@ async def expire_stale_offers(db: AsyncSession) -> int:
             db.add(listing)
 
     await db.commit()
-    return (result_pending.rowcount or 0) + len(expired_accepted_offers)
+    return (result_pending.rowcount or 0) + len(expired_accepted_offers)  # type: ignore[attr-defined]
 
 
 async def create_offer(

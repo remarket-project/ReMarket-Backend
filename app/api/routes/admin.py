@@ -85,7 +85,7 @@ async def get_dashboard_stats(
     count_listings = db.execute(select(func.count()).select_from(Listing))
     count_orders = db.execute(select(func.count()).select_from(Order))
     count_disputes = db.execute(
-        select(func.count()).select_from(Dispute).where(Dispute.status == "open")
+        select(func.count()).select_from(Dispute).where(Dispute.status == "open")  # type: ignore[arg-type]
     )
 
     results = await asyncio.gather(

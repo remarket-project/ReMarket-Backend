@@ -190,7 +190,7 @@ async def get_my_orders(
     items, total = await crud_order.get_user_orders(db, current_user.id)
     result = []
     for item in items:
-        d = {c.name: getattr(item, c.name) for c in item.__table__.columns}
+        d = {c.name: getattr(item, c.name) for c in item.__table__.columns}  # type: ignore[attr-defined]
         d["has_dispute"] = len(item.disputes) > 0
         result.append(OrderRead.model_validate(d))
     return result

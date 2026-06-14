@@ -140,7 +140,7 @@ async def withdraw(
             description=f"Wallet withdrawal: {data.amount:,.0f} VND",
         )
     except stripe.InvalidRequestError as e:
-        raise HTTPException(status_code=400, detail=f"Stripe: {e.error.message}")
+        raise HTTPException(status_code=400, detail=f"Stripe: {e.error.message if e.error else str(e)}")
 
     balance_before = locked_wallet.balance
     locked_wallet.balance -= data.amount

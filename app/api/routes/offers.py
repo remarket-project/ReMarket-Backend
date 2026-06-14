@@ -172,7 +172,7 @@ async def confirm_offer_order(
 
     # Notifications
     listing_result = await db.execute(
-        select(Listing).where(Listing.id == offer.listing_id)
+        select(Listing).where(Listing.id == offer.listing_id)  # type: ignore[arg-type]
     )
     listing = listing_result.scalar_one_or_none()
     listing_title = listing.title if listing else ""

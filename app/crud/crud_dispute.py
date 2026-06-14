@@ -68,7 +68,7 @@ async def get_dispute_by_id(db: AsyncSession, dispute_id: uuid.UUID) -> Dispute 
     """Get dispute by ID."""
     result = await db.execute(
         select(Dispute)
-        .options(selectinload(Dispute.evidence))
+        .options(selectinload(Dispute.evidence))  # type: ignore[arg-type]
         .where(Dispute.id == dispute_id)  # type: ignore[arg-type]
     )
     return result.scalar_one_or_none()
@@ -78,7 +78,7 @@ async def get_dispute_by_order(db: AsyncSession, order_id: uuid.UUID) -> Dispute
     """Get dispute for an order (if exists)."""
     result = await db.execute(
         select(Dispute)
-        .options(selectinload(Dispute.evidence))
+        .options(selectinload(Dispute.evidence))  # type: ignore[arg-type]
         .where(Dispute.order_id == order_id)  # type: ignore[arg-type]
     )
     return result.scalar_one_or_none()
@@ -197,7 +197,7 @@ async def list_disputes(
     """List disputes with optional status filter."""
     from sqlalchemy import func
 
-    query = select(Dispute).options(selectinload(Dispute.evidence))
+    query = select(Dispute).options(selectinload(Dispute.evidence))  # type: ignore[arg-type]
     count_query = select(func.count()).select_from(Dispute)
 
     if status:

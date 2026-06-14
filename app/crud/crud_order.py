@@ -49,7 +49,7 @@ async def get_user_orders(
     # Get paginated items with dispute info
     result = await db.execute(
         select(Order)
-        .options(selectinload(Order.disputes))
+        .options(selectinload(Order.disputes))  # type: ignore[arg-type]
         .where(base_condition)  # type: ignore[arg-type]
         .order_by(desc(Order.created_at))  # type: ignore[arg-type]
         .offset(skip)
