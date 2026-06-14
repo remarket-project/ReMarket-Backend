@@ -1,0 +1,37 @@
+[
+  {
+    "id": 1,
+    "q": "Làm thế nào để đăng tin bán hàng?",
+    "a": "Đăng nhập tài khoản, nhấn nút 'Đăng tin' ở góc phải header, điền đầy đủ thông tin theo 5 bước và nhấn 'Đăng tin'. Tin của bạn sẽ được kiểm duyệt trước khi hiển thị."
+  },
+  {
+    "id": 2,
+    "q": "Thanh toán qua escrow hoạt động thế nào?",
+    "a": "Khi người mua và người bán đồng ý giao dịch, số tiền sẽ được giữ trong tài khoản trung gian (escrow). Chỉ khi người mua xác nhận đã nhận hàng, tiền mới được giải ngân cho người bán."
+  },
+  {
+    "id": 3,
+    "q": "Mất bao lâu để nhận được tiền sau khi bán?",
+    "a": "Sau khi người mua xác nhận đã nhận hàng, tiền sẽ được giải ngân ngay lập tức vào ví ReMarket của bạn. Bạn có thể rút về tài khoản ngân hàng bất kỳ lúc nào."
+  },
+  {
+    "id": 4,
+    "q": "Làm sao để liên hệ với người bán?",
+    "a": "Bạn có thể nhắn tin trực tiếp qua tính năng Chat trên trang chi tiết tin đăng hoặc từ trang thương lượng (Offers)."
+  },
+  {
+    "id": 5,
+    "q": "Tôi có thể hủy đơn hàng không?",
+    "a": "Có, bạn có thể hủy đơn hàng trước khi người bán xác nhận đã gửi hàng. Sau đó bạn cần mở dispute để đội ngũ hỗ trợ can thiệp."
+  },
+  {
+    "id": 6,
+    "q": "Phí giao dịch trên ReMarket là bao nhiêu?",
+    "a": "ReMarket thu phí dịch vụ 3% trên mỗi giao dịch thành công. Phí này được khấu trừ tự động khi giải ngân cho người bán."
+  },
+  {
+    "id": 7,
+    "q": "Làm sao để thay đổi mật khẩu?",
+    "a": "Vào trang Cài đặt tài khoản, chọn tab 'Mật khẩu', nhập mật khẩu cũ và mật khẩu mới, sau đó nhấn 'Lưu thay đổi'."
+  }
+]

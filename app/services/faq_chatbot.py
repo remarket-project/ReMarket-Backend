@@ -1,0 +1,418 @@
+import json
+import logging
+import math
+from datetime import datetime, timedelta
+from uuid import UUID
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
+
+from app.core.ai_client import ai_client
+from app.core.exceptions import AllModelsExhaustedError
+from app.db.session import AsyncSessionLocal
+from app.models.faq import FaqChunk
+from app.models.listing import Listing
+from app.models.enums import ListingStatus
+from app.services.faq_cache import faq_cache
+
+logger = logging.getLogger(__name__)
+
+SYSTEM_PROMPT = """
+Bạn là trợ lý ảo thông minh của ReMarket - chợ mua bán C2C hàng đầu Việt Nam.
+Luôn trả lời bằng tiếng Việt, tự nhiên, thân thiện, tối đa 300 từ.
+Sử dụng các công cụ được cung cấp để tra cứu thông tin chính xác.
+
+NĂNG LỰC:
+1. search_faq() — Trả lời câu hỏi về chính sách, phí, hướng dẫn, quy trình
+2. search_products(keyword, min_price, max_price, category) — Tìm sản phẩm thông minh
+3. get_product_detail(product_id) — Xem chi tiết sản phẩm (giá, mô tả, tình trạng)
+4. get_trending_products() — Xem sản phẩm thịnh hành / bán chạy
+
+VÍ DỤ TỐT:
+- "tìm iphone giá dưới 15 triệu" → search_products("iphone", max_price=15000000)
+- "có laptop nào tốt không?" → search_products("laptop")
+- "sản phẩm nào đang hot?" → get_trending_products()
+- "cho tôi xem thông tin sp123" → get_product_detail("sp123")
+- "phí giao dịch bao nhiêu?" → search_faq("phí giao dịch")
+
+QUY TẮC AN TOÀN (TUYỆT ĐỐI KHÔNG trả lời):
+- Nội dung khiêu dâm, tình dục, hẹn hò
+- Bạo lực, khủng bố, vũ khí
+- Hack, gian lận, lừa đảo, đánh cắp tài khoản
+- Ma túy, chất cấm, thuốc kích thích
+- Chia sẻ thông tin cá nhân (số điện thoại, địa chỉ, CMND/CCCD)
+- Nội dung chính trị, tôn giáo nhạy cảm
+- Bất kỳ giao dịch/phát ngôn vi phạm pháp luật Việt Nam
+- Tự hủy hoại bản thân, tự tử
+
+KHI GẶP CÂU HỎI VI PHẠM:
+→ Từ chối lịch sự, ví dụ: "Xin lỗi, mình không thể hỗ trợ câu hỏi này. Bạn cần giúp gì về mua bán trên ReMarket không?"
+
+KHI KHÔNG CHẮC CHẮN:
+→ "Mình không đủ thông tin để trả lời chính xác. Bạn muốn mình tìm sản phẩm hoặc tra cứu chính sách giúp bạn không?"
+
+Chào hỏi / cảm ơn → trả lời thân thiện, không cần gọi công cụ.
+"""
+
+TOOLS = [
+    {
+        "name": "search_faq",
+        "description": "Tìm câu trả lời trong cơ sở dữ liệu FAQ về chính sách, phí, escrow, hướng dẫn đăng tin, hủy đơn, v.v.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Câu hỏi cần tìm kiếm (tiếng Việt)",
+                }
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "search_products",
+        "description": "Tìm kiếm sản phẩm thông minh trên ReMarket. Hỗ trợ tìm theo từ khóa, khoảng giá, danh mục. Kết quả trả về gồm tên, giá, tình trạng, địa điểm.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "keyword": {
+                    "type": "string",
+                    "description": "Từ khóa tìm kiếm (vd: iphone, laptop, đồ gia dụng)",
+                },
+                "min_price": {
+                    "type": "number",
+                    "description": "Giá tối thiểu (VNĐ)",
+                },
+                "max_price": {
+                    "type": "number",
+                    "description": "Giá tối đa (VNĐ)",
+                },
+            },
+            "required": ["keyword"],
+        },
+    },
+    {
+        "name": "get_product_detail",
+        "description": "Xem thông tin chi tiết một sản phẩm trên ReMarket: tên, giá, mô tả, tình trạng, người bán, địa điểm.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "product_id": {
+                    "type": "string",
+                    "description": "ID của sản phẩm (UUID)",
+                }
+            },
+            "required": ["product_id"],
+        },
+    },
+    {
+        "name": "get_trending_products",
+        "description": "Lấy danh sách sản phẩm nổi bật, thịnh hành trên ReMarket.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+]
+
+MAX_HISTORY = 8
+SIMILARITY_THRESHOLD = 0.75
+
+
+# ─── Main entry ──────────────────────────────────────────────────
+
+async def ask_faq(question: str, history: list[dict] | None = None) -> dict:
+    """
+    Xử lý câu hỏi — Gemini ưu tiên, fallback local RAG khi hết quota.
+
+    Returns:
+        {"answer": str, "source": str | None, "mode": "gemini" | "local_rag"}
+    """
+    question = question.strip()
+    if not question:
+        return {"answer": "Vui lòng nhập câu hỏi.", "source": None, "mode": "local_rag"}
+
+    if not history:
+        cached = faq_cache.get(question)
+        if cached:
+            logger.info("FAQ cache hit: %s", question[:50])
+            return cached
+
+    try:
+        result = await _ask_gemini(question, history)
+        if not history and result.get("source") is not None and result.get("mode") == "gemini":
+            faq_cache.set(question, result)
+        return result
+    except AllModelsExhaustedError:
+        logger.info("All Gemini models exhausted — falling back to local RAG")
+
+    return await _ask_local_rag(question)
+
+
+# ─── Gemini flow ─────────────────────────────────────────────────
+
+async def _ask_gemini(question: str, history: list[dict] | None) -> dict:
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+    if history:
+        for msg in history[-MAX_HISTORY:]:
+            messages.append(msg)
+
+    messages.append({"role": "user", "content": question})
+
+    max_tool_rounds = 3
+
+    for _ in range(max_tool_rounds):
+        try:
+            raw_response = await ai_client.chat(messages, tools=TOOLS)
+        except AllModelsExhaustedError:
+            raise
+        except Exception as e:
+            logger.error("Gemini chat failed: %s", e)
+            raise AllModelsExhaustedError(str(e))
+
+        try:
+            parsed = json.loads(raw_response)
+        except json.JSONDecodeError:
+            return {"answer": raw_response, "source": "ai_assist", "mode": "gemini"}
+
+        if "function_call" not in parsed:
+            return {"answer": raw_response, "source": "ai_assist", "mode": "gemini"}
+
+        fc = parsed["function_call"]
+        tool_fn = TOOL_DISPATCH.get(fc["name"])
+        if not tool_fn:
+            logger.warning("Unknown tool call: %s", fc["name"])
+            return {"answer": "Xin lỗi, có lỗi xảy ra khi xử lý yêu cầu.", "source": None, "mode": "gemini"}
+
+        try:
+            result = await tool_fn(fc["args"] if isinstance(fc["args"], dict) else {})
+        except Exception as e:
+            logger.error("Tool %s failed: %s", fc["name"], e)
+            return {"answer": "Xin lỗi, đã có lỗi xảy ra khi tra cứu thông tin.", "source": None, "mode": "gemini"}
+
+        messages.append({"role": "model", "content": raw_response})
+        messages.append({"role": "user", "content": json.dumps(result, ensure_ascii=False)})
+
+    try:
+        final_answer = await ai_client.chat(messages)
+    except AllModelsExhaustedError:
+        raise
+    except Exception as e:
+        logger.error("Gemini final chat failed: %s", e)
+        raise AllModelsExhaustedError(str(e))
+
+    return {"answer": final_answer, "source": "ai_assist", "mode": "gemini"}
+
+
+# ─── Local RAG Fallback (không cần Gemini) ──────────────────────
+
+async def _ask_local_rag(question: str) -> dict:
+    """
+    Trả lời bằng local RAG — không cần Gemini.
+    1. Embed câu hỏi bằng local E5
+    2. Search FAQ (pgvector cosine similarity)
+    3. Nếu match ≥ threshold → trả câu trả lời
+    4. Nếu không → greeting + FAQ list
+    """
+    query_vec = await ai_client.embed_one(question, prefix="query: ")
+    if not query_vec:
+        return _fallback_greeting(question)
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(FaqChunk)
+            .where(FaqChunk.embedding.isnot(None))
+            .order_by(FaqChunk.embedding.cosine_distance(query_vec))
+            .limit(1)
+        )
+        chunk = result.scalar_one_or_none()
+
+    if chunk:
+        distance = _cosine_distance(query_vec, chunk.embedding)
+        similarity = 1.0 - distance
+        logger.info("Local RAG match: similarity=%.4f, question=%s", similarity, chunk.question[:50])
+
+        if similarity >= SIMILARITY_THRESHOLD:
+            return {
+                "answer": chunk.answer,
+                "source": chunk.question,
+                "mode": "local_rag",
+            }
+
+    return _fallback_greeting(question)
+
+
+def _cosine_distance(vec1: list[float], vec2: list[float]) -> float:
+    if not vec1 or not vec2:
+        return 1.0
+    dot = sum(a * b for a, b in zip(vec1, vec2))
+    norm1 = math.sqrt(sum(a * a for a in vec1))
+    norm2 = math.sqrt(sum(b * b for b in vec2))
+    if norm1 == 0 or norm2 == 0:
+        return 1.0
+    return 1.0 - (dot / (norm1 * norm2))
+
+
+def _fallback_greeting(question: str) -> dict:
+    q_lower = question.lower().strip()
+    greetings = ["xin chào", "chào", "hello", "hi", "hey"]
+    thanks = ["cảm ơn", "thanks", "thank"]
+
+    if any(g in q_lower for g in greetings):
+        return {
+            "answer": "Chào bạn! Tôi là trợ lý ReMarket. Tôi có thể giúp gì cho bạn hôm nay?",
+            "source": None,
+            "mode": "local_rag",
+        }
+    if any(t in q_lower for t in thanks):
+        return {
+            "answer": "Cảm ơn bạn! Nếu cần hỗ trợ thêm, đừng ngần ngại hỏi tôi nhé.",
+            "source": None,
+            "mode": "local_rag",
+        }
+
+    return {
+        "answer": (
+            "Xin lỗi, hiện tại hệ thống AI đã đạt giới hạn requests hôm nay. "
+            "Tôi chỉ có thể trả lời các câu hỏi thường gặp sau:\n\n"
+            "• Làm thế nào để đăng tin bán hàng?\n"
+            "• Thanh toán qua escrow hoạt động thế nào?\n"
+            "• Phí giao dịch trên ReMarket là bao nhiêu?\n"
+            "• Làm sao để liên hệ với người bán?\n"
+            "• Tôi có thể hủy đơn hàng không?\n\n"
+            "Hoặc bạn có thể gửi email đến support@remarket.vn để được hỗ trợ trực tiếp."
+        ),
+        "source": None,
+        "mode": "local_rag",
+    }
+
+
+# ─── Tool execution ──────────────────────────────────────────────
+
+async def _execute_search_faq(query: str) -> dict:
+    query_vec = await ai_client.embed_one(query, prefix="query: ")
+    if not query_vec:
+        return {"found": False}
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(FaqChunk)
+            .where(FaqChunk.embedding.isnot(None))
+            .order_by(FaqChunk.embedding.cosine_distance(query_vec))
+            .limit(1)
+        )
+        chunk = result.scalar_one_or_none()
+
+    if chunk:
+        return {
+            "found": True,
+            "question": chunk.question,
+            "answer": chunk.answer,
+        }
+    return {"found": False}
+
+
+async def _execute_search_products(keyword: str, min_price: float | None = None, max_price: float | None = None) -> dict:
+    query_vec = await ai_client.embed_one(keyword, prefix="query: ")
+
+    async with AsyncSessionLocal() as db:
+        query = select(Listing).options(selectinload(Listing.seller)).where(Listing.status == ListingStatus.ACTIVE)
+
+        if min_price is not None:
+            query = query.where(Listing.price >= min_price)
+        if max_price is not None:
+            query = query.where(Listing.price <= max_price)
+
+        if query_vec:
+            query = query.order_by(Listing.embedding.cosine_distance(query_vec))
+        else:
+            query = query.order_by(Listing.created_at.desc())
+
+        result = await db.execute(query.limit(10))
+        items = result.scalars().all()
+
+    products = []
+    for item in items:
+        products.append({
+            "id": str(item.id),
+            "title": item.title,
+            "price": float(item.price) if item.price else 0,
+            "condition": item.condition_grade or "unknown",
+            "location": item.location_summary or "",
+            "seller": item.seller.full_name if item.seller else "Unknown",
+            "created_at": item.created_at.isoformat() if item.created_at else "",
+        })
+
+    return {"products": products, "total": len(products)}
+
+
+async def _execute_get_product_detail(product_id: str) -> dict:
+    try:
+        uid = UUID(product_id)
+    except ValueError:
+        return {"found": False, "error": "ID sản phẩm không hợp lệ"}
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Listing).options(selectinload(Listing.seller)).where(Listing.id == uid)
+        )
+        item = result.scalar_one_or_none()
+
+    if not item:
+        return {"found": False, "error": "Không tìm thấy sản phẩm"}
+
+    return {
+        "found": True,
+        "product": {
+            "id": str(item.id),
+            "title": item.title,
+            "price": float(item.price) if item.price else 0,
+            "description": (item.description or "")[:500],
+            "condition": item.condition_grade or "unknown",
+            "location": item.location_summary or "",
+            "seller": item.seller.full_name if item.seller else "Unknown",
+            "created_at": item.created_at.isoformat() if item.created_at else "",
+            "updated_at": item.updated_at.isoformat() if item.updated_at else "",
+        },
+    }
+
+
+async def _execute_get_trending_products() -> dict:
+    cutoff = datetime.utcnow() - timedelta(days=14)
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Listing)
+            .options(selectinload(Listing.seller))
+            .where(Listing.status == ListingStatus.ACTIVE, Listing.created_at >= cutoff)
+            .order_by(Listing.view_count.desc())
+            .limit(10)
+        )
+        items = result.scalars().all()
+
+    products = []
+    for item in items:
+        products.append({
+            "id": str(item.id),
+            "title": item.title,
+            "price": float(item.price) if item.price else 0,
+            "condition": item.condition_grade or "unknown",
+            "location": item.location_summary or "",
+            "views": item.view_count or 0,
+            "seller": item.seller.full_name if item.seller else "Unknown",
+        })
+
+    return {"products": products, "total": len(products)}
+
+
+TOOL_DISPATCH = {
+    "search_faq": lambda args: _execute_search_faq(args.get("query", "")),
+    "search_products": lambda args: _execute_search_products(
+        args.get("keyword", ""),
+        min_price=args.get("min_price"),
+        max_price=args.get("max_price"),
+    ),
+    "get_product_detail": lambda args: _execute_get_product_detail(args.get("product_id", "")),
+    "get_trending_products": lambda _args: _execute_get_trending_products(),
+}

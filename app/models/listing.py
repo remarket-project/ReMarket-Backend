@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import Column, DateTime
 from sqlmodel import Field, Relationship, SQLModel
 
 from app.models.enums import ConditionGrade, ListingStatus
@@ -58,6 +59,11 @@ class Listing(ListingBase, table=True):
     orders: list["Order"] = Relationship(
         back_populates="listing", cascade_delete=True
     )
+    embedding: list[float] | None = Field(
+        default=None,
+        sa_column=Column(Vector(384)),
+    )
+
     # Analytics / metadata
     view_count: int = Field(default=0)
     save_count: int = Field(default=0)

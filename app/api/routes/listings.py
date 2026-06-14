@@ -1,4 +1,5 @@
 import os
+import time
 import uuid
 from typing import Literal
 
@@ -26,6 +27,9 @@ from app.schemas.listing import (
     ListingWithImages,
 )
 from app.services.minio_service import get_minio_service
+
+_rec_cache: dict[str, tuple[list, int, float]] = {}
+_REC_CACHE_TTL = 3600
 
 router = APIRouter(prefix="/listings", tags=["Listings"])
 limiter = Limiter(key_func=get_remote_address)
@@ -79,7 +83,7 @@ async def list_listings(
     min_price: float | None = Query(None, ge=0),
     max_price: float | None = Query(None, ge=0),
     sort_by: Literal["newest", "oldest", "price_asc",
-                     "price_desc", "popular", "featured"] = "newest",
+                     "price_desc", "popular", "featured", "relevant"] = "newest",
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100)
 ):
@@ -224,7 +228,14 @@ async def get_related_listings(
     if not listing:
         raise HTTPException(status_code=404, detail="Bài đăng không tìm thấy")
 
-    items, total = await crud_listing.get_related_listings(db, listing, skip=skip, limit=limit)
+    cache_key = f"{listing_id}:{skip}:{limit}"
+    cached = _rec_cache.get(cache_key)
+    if cached and (time.time() - cached[2]) < _REC_CACHE_TTL:
+        items, total = cached[0], cached[1]
+    else:
+        items, total = await crud_listing.get_related_listings(db, listing, skip=skip, limit=limit)
+        _rec_cache[cache_key] = (items, total, time.time())
+
     listing_ids = [item.id for item in items]
     images_by_listing = await crud_listing.get_images_for_listings(db, listing_ids)
     return ListingPaginated(

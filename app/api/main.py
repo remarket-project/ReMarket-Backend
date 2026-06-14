@@ -10,6 +10,7 @@ from app.api.routes import (
     content,
     disputes,
     escrow,
+    faq,
     listings,
     notifications,
     offers,
@@ -92,3 +93,8 @@ api_router.include_router(payment.router)
 # Stripe Connect Route
 # ============================================================================
 api_router.include_router(connect.router)
+
+# ============================================================================
+# FAQ Chatbot Route
+# ============================================================================
+api_router.include_router(faq.router)

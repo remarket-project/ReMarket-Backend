@@ -23,6 +23,7 @@ from app.models.enums import (
     UserRole,
 )
 from app.models.escrow import Escrow
+from app.models.faq import FaqChunk
 from app.models.listing import (
     Listing,
     ListingImage,
@@ -102,6 +103,7 @@ __all__ = [
     "UserMessage",
     "Token",
     "NewPassword",
+    "FaqChunk",
     # Models
     "ReturnRequest",
     "ReturnReason",

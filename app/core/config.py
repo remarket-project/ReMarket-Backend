@@ -168,6 +168,54 @@ class Settings(BaseSettings):
     FIRST_SUPERUSER_PASSWORD: str | None = None
     EMAIL_TEST_USER: str = "test@remarket.vn"
 
+    # ─── AI / Embedding ───
+    AI_PROVIDER: str = "local"
+    AI_EMBED_DIM: int = 384
+
+    # Gemini API (chỉ dùng cho chat)
+    GEMINI_API_KEY: str = ""
+    GEMINI_CHAT_MODEL: str = "gemini-2.5-flash-lite"
+
+    # Multi-key / Multi-model rotation (xem Plan 09)
+    GEMINI_API_KEYS: list[str] = Field(
+        default=[],
+        description="Danh sách Gemini API keys từ các tài khoản free khác nhau",
+    )
+    GEMINI_CHAT_MODELS: list[str] = Field(
+        default=[
+            "gemini-3.1-flash-lite",
+            "gemini-2.5-flash",
+            "gemini-3.5-flash",
+            "gemini-3-flash",
+        ],
+        description="Danh sách models ưu tiên từ cao→thấp",
+    )
+    GEMINI_RPD_LIMITS: dict[str, int] = Field(
+        default={
+            "gemini-3.1-flash-lite": 500,
+            "gemini-2.5-flash": 20,
+            "gemini-3.5-flash": 20,
+            "gemini-3-flash": 20,
+        },
+        description="RPD limit cho từng model (free tier)",
+    )
+    GEMINI_RPD_WARN_THRESHOLD: float = Field(
+        default=0.85,
+        description="Tỉ lệ RPD để cảnh báo sớm trước khi rotate (0.0-1.0)",
+    )
+
+    # OpenAI (dự phòng)
+    OPENAI_API_KEY: str = ""
+    OPENAI_CHAT_MODEL: str = "gpt-4o-mini"
+    OPENAI_EMBED_MODEL: str = "text-embedding-3-small"
+
+    # Local embedding
+    LOCAL_EMBED_MODEL: str = "intfloat/multilingual-e5-small"
+
+    # Rate limit
+    AI_MAX_RETRIES: int = 2
+    AI_TIMEOUT_SECONDS: int = 30
+
     # File Upload
     UPLOAD_DIR: str = "uploads"
 
