@@ -3,7 +3,7 @@ import time
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -16,6 +16,7 @@ from app.core.websocket_manager import ws_manager
 from app.crud import crud_category, crud_listing
 from app.crud.crud_user import get_admin_user_ids
 from app.models.enums import ListingStatus, OfferStatus
+from app.models.listing import ListingImage
 from app.models.offer import Offer
 from app.models.user import UserRole
 from app.schemas.listing import (
@@ -38,7 +39,7 @@ UPLOAD_DIR = os.path.join(settings.UPLOAD_DIR, "listings")
 ABS_UPLOAD_DIR = os.path.abspath(UPLOAD_DIR)
 os.makedirs(ABS_UPLOAD_DIR, exist_ok=True)
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
-ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
+ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "jfif", "gif", "bmp", "tiff", "tif", "svg", "ico", "avif", "heic", "heif"}
 ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 
@@ -287,6 +288,31 @@ async def get_listing(
     return await _fetch_listing_with_images(db, listing_id)
 
 
+async def _embed_listing_in_background(listing_id: str) -> None:
+    """Generate embedding for a listing in background after response is sent."""
+    try:
+        from app.db.session import AsyncSessionLocal
+        from app.crud import crud_listing as crud
+        from app.services.embeddings import embed_listing_full
+
+        async with AsyncSessionLocal() as db:
+            listing = await crud.get_listing(db, listing_id)
+            if listing:
+                vec = await embed_listing_full(listing)
+                if vec:
+                    from sqlalchemy import update
+                    from app.models.listing import Listing
+
+                    await db.execute(
+                        update(Listing).where(Listing.id == listing.id).values(embedding=vec)  # type: ignore
+                    )
+                    await db.commit()
+    except Exception:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.exception("Background embedding failed for listing %s", listing_id)
+
+
 @router.post("", response_model=ListingRead, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 @router.post("/", response_model=ListingRead, status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/hour")
@@ -295,6 +321,7 @@ async def create_listing(
     db: SessionDep,
     request: Request,
     data: ListingCreate,
+    background_tasks: BackgroundTasks,
 ):
     """Tạo bài đăng mới (trạng thái = PENDING)"""
     category = await crud_category.get_category_by_id(db, data.category_id)
@@ -312,10 +339,16 @@ async def create_listing(
             seller_id=str(current_user.id),
             category_id=str(data.category_id),
             location_summary=data.location_summary,
+            skip_embedding=True,
         )
     except IntegrityError as err:
         await db.rollback()
         raise HTTPException(status_code=400, detail="ID danh mục không hợp lệ") from err
+
+    background_tasks.add_task(
+        _embed_listing_in_background, str(new_listing.id)
+    )
+
     admin_ids = await get_admin_user_ids(db)
     if admin_ids:
         await ws_manager.broadcast_to_users(admin_ids, {"type": "new_pending_listing"})
@@ -330,6 +363,7 @@ async def update_listing(
     request: Request,
     listing_id: uuid.UUID,
     data: ListingUpdate,
+    background_tasks: BackgroundTasks,
 ):
     """Cập nhật bài đăng"""
     listing = await crud_listing.get_listing(db, str(listing_id))
@@ -379,6 +413,10 @@ async def update_listing(
         condition_grade=data.condition_grade,
         category_id=str(data.category_id) if data.category_id else None,
         status=data.status,
+        skip_embedding=True,
+    )
+    background_tasks.add_task(
+        _embed_listing_in_background, str(listing_id)
     )
     await ws_manager.broadcast_to_all({
         "type": "listing_updated",
@@ -408,7 +446,10 @@ async def delete_listing(
         raise HTTPException(
             status_code=400, detail="Không thể xóa bài đăng đã bán")
 
-    await crud_listing.hard_delete_listing(db, str(listing_id))
+    try:
+        await crud_listing.hard_delete_listing(db, str(listing_id))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     await ws_manager.broadcast_to_all({
         "type": "listing_deleted",
         "listing_id": str(listing_id),
@@ -482,3 +523,113 @@ async def upload_listing_image(
 
     new_image = await crud_listing.add_listing_image(db, str(listing_id), image_url, is_primary)
     return new_image
+
+
+@router.post("/{listing_id}/images/bulk", response_model=list[ListingImageRead])
+async def upload_listing_images_bulk(
+    current_user: CurrentUser,
+    db: SessionDep,
+    listing_id: uuid.UUID,
+    files: list[UploadFile] = File(..., description="Danh sách ảnh (tối đa 10)"),
+    is_primary: list[bool] = Form(default=[]),
+):
+    """Upload nhiều ảnh cùng lúc cho bài đăng.
+
+    - files: tối đa 10 ảnh
+    - is_primary: mảng bool tương ứng từng file.
+      Chỉ 1 phần tử được true — nếu có nhiều hơn 1 → lỗi.
+      Nếu không truyền hoặc tất cả false → ảnh đầu tiên mặc định là primary.
+    """
+    listing = await crud_listing.get_listing(db, str(listing_id))
+    if not listing:
+        raise HTTPException(status_code=404, detail="Bài đăng không tìm thấy")
+    if str(listing.seller_id) != str(current_user.id) and current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Không có quyền tải ảnh")
+
+    if len(files) > 10:
+        raise HTTPException(status_code=400, detail="Tối đa 10 ảnh mỗi lần upload")
+
+    if not files:
+        raise HTTPException(status_code=400, detail="Phải có ít nhất 1 ảnh")
+
+    # --- Validate is_primary ---
+    primary_flags: list[bool] = []
+    if is_primary:
+        if len(is_primary) != len(files):
+            raise HTTPException(
+                status_code=400,
+                detail="Số lượng is_primary không khớp với số lượng files",
+            )
+        if sum(is_primary) > 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Chỉ được chọn 1 ảnh chính (is_primary=true)",
+            )
+        primary_flags = list(is_primary)
+    else:
+        primary_flags = [False] * len(files)
+
+    # Mặc định: ảnh đầu tiên là primary nếu không có cái nào true
+    has_primary = any(primary_flags)
+    if not has_primary:
+        primary_flags[0] = True
+
+    new_images: list[ListingImage] = []
+    for i, (file, this_primary) in enumerate(zip(files, primary_flags)):
+        # Validate file
+        if file.content_type not in ALLOWED_MIME_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File thứ {i+1}: định dạng '{file.content_type}' không hỗ trợ",
+            )
+        if not file.filename or "." not in file.filename:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File thứ {i+1}: tên file không hợp lệ",
+            )
+
+        ext = file.filename.rsplit(".", 1)[-1].lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File thứ {i+1}: đuôi '.{ext}' không hỗ trợ",
+            )
+
+        file_bytes = await file.read()
+        if len(file_bytes) > MAX_IMAGE_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File thứ {i+1}: kích thước tối đa {MAX_IMAGE_BYTES // (1024*1024)}MB",
+            )
+
+        unique_filename = f"{uuid.uuid4().hex}.{ext}"
+
+        # Upload to MinIO or local filesystem
+        if settings.use_minio:
+            minio_service = get_minio_service()
+            if not minio_service:
+                raise RuntimeError("MinIO service not available")
+            file_path = f"listings/{str(listing_id)}/{unique_filename}"
+            image_url = minio_service.upload_file(
+                file_path,
+                file_bytes,
+                content_type=file.content_type or "application/octet-stream",
+            )
+        else:
+            file_path = os.path.abspath(
+                os.path.join(ABS_UPLOAD_DIR, unique_filename))
+            if not file_path.startswith(f"{ABS_UPLOAD_DIR}{os.sep}"):
+                raise HTTPException(
+                    status_code=400, detail="Đường dẫn upload không hợp lệ")
+
+            with open(file_path, "wb") as buffer:
+                buffer.write(file_bytes)
+
+            image_url = f"/{settings.UPLOAD_DIR}/listings/{unique_filename}"
+
+        new_image = await crud_listing.add_listing_image(
+            db, str(listing_id), image_url, this_primary,
+        )
+        new_images.append(new_image)
+
+    return new_images

@@ -11,8 +11,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload, selectinload
 
-from app.models.enums import ListingStatus
+from app.models.enums import ListingStatus, OrderStatus
+from app.models.dispute import Dispute, DisputeEvidence
+from app.models.escrow import Escrow
 from app.models.listing import Listing, ListingImage
+from app.models.order import Order
+from app.models.order_event import OrderEvent
+from app.models.return_request import ReturnRequest
+from app.models.review import Review
+from app.models.chat import ChatConversation
 from app.services.embeddings import embed_listing_full, embed_listing_text
 
 
@@ -30,7 +37,8 @@ async def create_listing(
     condition_grade,
     seller_id: str,
     category_id: str,
-    location_summary: str | None = None
+    location_summary: str | None = None,
+    skip_embedding: bool = False,
 ) -> Listing:
     """Create a new listing."""
     db_obj = Listing(
@@ -44,7 +52,8 @@ async def create_listing(
         location_summary=location_summary,
         status=ListingStatus.PENDING
     )
-    db_obj.embedding = await embed_listing_full(db_obj)
+    if not skip_embedding:
+        db_obj.embedding = await embed_listing_full(db_obj)
     db.add(db_obj)
     await db.commit()
     await db.refresh(db_obj)
@@ -135,6 +144,7 @@ async def update_listing(
     condition_grade=None,
     category_id: str | None = None,
     status: ListingStatus | None = None,
+    skip_embedding: bool = False,
 ) -> Listing | None:
     """Update a listing (partial update)."""
     update_data: dict[str, object] = {}
@@ -166,7 +176,7 @@ async def update_listing(
 
     title_changed = "title" in update_data
     desc_changed = "description" in update_data
-    if title_changed or desc_changed:
+    if (title_changed or desc_changed) and not skip_embedding:
         updated = await get_listing(db, listing_id)
         if updated:
             vec = await embed_listing_full(updated)
@@ -208,9 +218,101 @@ async def soft_delete_listing(db: AsyncSession, listing_id: str) -> None:
     await db.commit()
 
 
+ACTIVE_ORDER_STATUSES = {
+    OrderStatus.PENDING,
+    OrderStatus.SHIPPING,
+    OrderStatus.DELIVERED,
+    OrderStatus.RETURNING,
+    OrderStatus.COMPLETED,
+    OrderStatus.DISPUTED,
+}
+
+
 async def hard_delete_listing(db: AsyncSession, listing_id: str) -> None:
-    """Permanently delete a listing and all related data (cascades images, offers, orders)."""
-    listing = await db.get(Listing, _to_uuid(listing_id))
+    """Permanently delete a listing.
+
+    - Active orders → raises ValueError.
+    - Cancelled/returned orders → deletes all dependent records first,
+      then removes the listing (DB cascade handles offers + images).
+    """
+    listing_uuid = _to_uuid(listing_id)
+
+    # Check for active orders
+    result = await db.execute(
+        select(Order).where(Order.listing_id == listing_uuid)  # type: ignore[arg-type]
+    )
+    orders = result.scalars().all()
+    for order in orders:
+        if order.status in ACTIVE_ORDER_STATUSES:
+            raise ValueError(
+                "Không thể xóa bài đăng có đơn hàng đang hoạt động"
+            )
+
+    if orders:
+        order_ids = [o.id for o in orders]
+
+        # Delete in FK-safe order:
+        # 1. dispute_evidence → disputes
+        dispute_result = await db.execute(
+            select(Dispute.id).where(  # type: ignore[no-matching-overload]
+                Dispute.order_id.in_(order_ids)  # type: ignore[attr-defined]
+            )
+        )
+        dispute_ids = dispute_result.scalars().all()
+        if dispute_ids:
+            await db.execute(
+                delete(DisputeEvidence).where(
+                    DisputeEvidence.dispute_id.in_(dispute_ids)  # type: ignore[attr-defined]
+                )
+            )
+        await db.execute(
+            delete(Dispute).where(Dispute.order_id.in_(order_ids))  # type: ignore[attr-defined]
+        )
+        # 2. return_requests
+        await db.execute(
+            delete(ReturnRequest).where(
+                ReturnRequest.order_id.in_(order_ids)  # type: ignore[attr-defined]
+            )
+        )
+        # 3. order_events
+        await db.execute(
+            delete(OrderEvent).where(
+                OrderEvent.order_id.in_(order_ids)  # type: ignore[attr-defined]
+            )
+        )
+        # 4. escrows
+        await db.execute(
+            delete(Escrow).where(
+                Escrow.order_id.in_(order_ids)  # type: ignore[attr-defined]
+            )
+        )
+        # 5. reviews (has DB-level CASCADE, but being explicit is fine)
+        await db.execute(
+            delete(Review).where(
+                Review.order_id.in_(order_ids)  # type: ignore[attr-defined]
+            )
+        )
+        # 6. nullify offer_id on orders (FK to offers)
+        await db.execute(
+            update(Order)
+            .where(Order.listing_id == listing_uuid)  # type: ignore[arg-type]
+            .values(offer_id=None)
+        )
+        # 7. delete orders
+        await db.execute(
+            delete(Order).where(Order.listing_id == listing_uuid)  # type: ignore[arg-type]
+        )
+        await db.flush()
+
+    # 8. nullify listing_id on chat_conversations (FK to listings)
+    await db.execute(
+        update(ChatConversation)
+        .where(ChatConversation.listing_id == listing_uuid)  # type: ignore[arg-type]
+        .values(listing_id=None)
+    )
+    await db.flush()
+
+    listing = await db.get(Listing, listing_uuid)
     if listing:
         await db.delete(listing)
         await db.commit()

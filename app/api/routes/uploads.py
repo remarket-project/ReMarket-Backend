@@ -16,7 +16,7 @@ limiter = Limiter(key_func=get_remote_address)
 ABS_UPLOAD_DIR = os.path.abspath(settings.UPLOAD_DIR)
 os.makedirs(ABS_UPLOAD_DIR, exist_ok=True)
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
-ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
+ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "jfif", "gif", "bmp", "tiff", "tif", "svg", "ico", "avif", "heic", "heif"}
 ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 

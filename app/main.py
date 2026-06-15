@@ -61,6 +61,16 @@ async def lifespan(app: FastAPI):
     offer_expiry_task = asyncio.create_task(_offer_expiry_worker())
     start_auto_worker()  # Order auto-complete worker
     ghn_poll_task = start_polling()  # GHN polling fallback
+
+    # Pre-warm embedding model to avoid cold-start delay on first listing
+    try:
+        from app.core.ai_client import ai_client
+        logger.info("Pre-warming embedding model...")
+        ai_client._get_local_embed_model()
+        logger.info("Embedding model loaded")
+    except Exception:
+        logger.warning("Failed to pre-warm embedding model (will load on demand)")
+
     logger.info("Application started")
 
     yield
