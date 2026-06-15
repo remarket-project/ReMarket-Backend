@@ -16,7 +16,7 @@ async def batch_embed_all_listings(batch_size: int = 50):
         while True:
             result = await db.execute(
                 select(Listing)
-                .where(Listing.embedding.is_(None))
+                .where(Listing.embedding.is_(None))  # type: ignore[attr-defined]
                 .limit(batch_size)
             )
             listings = list(result.scalars().all())

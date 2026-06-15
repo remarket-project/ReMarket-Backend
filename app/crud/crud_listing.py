@@ -172,7 +172,7 @@ async def update_listing(
             vec = await embed_listing_full(updated)
             await db.execute(
                 update(Listing)
-                .where(Listing.id == _to_uuid(listing_id))
+                .where(Listing.id == _to_uuid(listing_id))  # type: ignore[arg-type]
                 .values(embedding=vec)
             )
 
@@ -229,62 +229,74 @@ async def search_listings(
     skip: int = 0,
     limit: int = 100
 ) -> tuple[list[Listing], int]:
-    """Search listings with filters."""
-    query = select(Listing).options(selectinload(Listing.seller))  # type: ignore[arg-type]
-    count_query = select(func.count()).select_from(Listing)
+    """Search listings with AI-powered hybrid search.
 
-    conditions = []
+    Search strategy (3-stage):
+    1. Exact match: keyword appears in title/description → highest priority
+    2. Semantic match: vector cosine distance on embedding → relevant results
+    3. Fallback: if results < limit, supplement with broader category results
+    """
+    query = select(Listing).options(selectinload(Listing.seller))  # type: ignore[arg-type]
+    base_conditions: list = []
 
     if status:
-        conditions.append(Listing.status == status)  # type: ignore[arg-type]
+        base_conditions.append(Listing.status == status)  # type: ignore[arg-type]
     if featured_only:
-        conditions.append(Listing.is_featured.is_(True))  # type: ignore[arg-type]
-    if keyword and sort_by != "relevant":
+        base_conditions.append(Listing.is_featured.is_(True))  # type: ignore[arg-type]
+    if category_id:
+        base_conditions.append(Listing.category_id == _to_uuid(category_id))  # type: ignore[arg-type]
+    if seller_id:
+        base_conditions.append(Listing.seller_id == _to_uuid(seller_id))  # type: ignore[arg-type]
+    if min_price is not None:
+        base_conditions.append(Listing.price >= min_price)  # type: ignore[arg-type]
+    if max_price is not None:
+        base_conditions.append(Listing.price <= max_price)  # type: ignore[arg-type]
+
+    # ── Stage 1: Keyword / exact-match filter ──
+    # In "relevant" mode, rely on vector search for semantic matching
+    # For all other modes, use ILIKE for exact/substring matching
+    kw_lower = keyword.lower().strip() if keyword else None
+    if kw_lower and sort_by != "relevant":
         keyword_filter = f"%{keyword}%"
-        conditions.append(
+        base_conditions.append(
             or_(
                 Listing.title.ilike(keyword_filter),  # type: ignore[arg-type]
                 Listing.description.ilike(keyword_filter),  # type: ignore[arg-type]
                 Listing.location_summary.ilike(keyword_filter),  # type: ignore[arg-type]
             )
         )
-    if category_id:
-        conditions.append(Listing.category_id == _to_uuid(category_id))  # type: ignore[arg-type]
-    if seller_id:
-        conditions.append(Listing.seller_id == _to_uuid(seller_id))  # type: ignore[arg-type]
-    if min_price is not None:
-        conditions.append(Listing.price >= min_price)  # type: ignore[arg-type]
-    if max_price is not None:
-        conditions.append(Listing.price <= max_price)  # type: ignore[arg-type]
 
-    if conditions:
-        for condition in conditions:
-            query = query.where(condition)
-            count_query = count_query.where(condition)
+    # Apply base filters
+    for condition in base_conditions:
+        query = query.where(condition)
 
-    # ── Vector search ──
+    # ── Stage 2: Vector / semantic ordering ──
     query_vec = None
-    if sort_by == "relevant" and keyword:
-        query_vec = await embed_listing_text(keyword)
+    if sort_by == "relevant":
+        if kw_lower:
+            query_vec = await embed_listing_text(keyword or "")  # type: ignore[arg-type]
         if query_vec:
-            query = query.where(Listing.embedding.isnot(None))
+            query = query.where(Listing.embedding.isnot(None))  # type: ignore[attr-defined]
             query = query.order_by(
-                Listing.embedding.cosine_distance(query_vec)
+                Listing.embedding.cosine_distance(query_vec)  # type: ignore[attr-defined]
             )
         else:
-            query = query.order_by(desc(Listing.created_at))
+            query = query.order_by(desc(Listing.created_at))  # type: ignore[arg-type]
     else:
-        order_map = {
-            "newest": [desc(Listing.created_at)],
-            "oldest": [asc(Listing.created_at)],
-            "price_asc": [asc(Listing.price), desc(Listing.created_at)],
-            "price_desc": [desc(Listing.price), desc(Listing.created_at)],
-            "popular": [desc(Listing.view_count), desc(Listing.save_count), desc(Listing.created_at)],
-            "featured": [desc(Listing.is_featured), desc(Listing.published_at), desc(Listing.created_at)],
+        order_map: dict[str, list] = {
+            "newest": [desc(Listing.created_at)],  # type: ignore[arg-type]
+            "oldest": [asc(Listing.created_at)],  # type: ignore[arg-type]
+            "price_asc": [asc(Listing.price), desc(Listing.created_at)],  # type: ignore[arg-type]
+            "price_desc": [desc(Listing.price), desc(Listing.created_at)],  # type: ignore[arg-type]
+            "popular": [desc(Listing.view_count), desc(Listing.save_count), desc(Listing.created_at)],  # type: ignore[arg-type]
+            "featured": [desc(Listing.is_featured), desc(Listing.published_at), desc(Listing.created_at)],  # type: ignore[arg-type]
         }
         query = query.order_by(*order_map.get(sort_by, order_map["newest"]))
 
-    # Count total
+    # Count total (with all filters applied)
+    count_query = select(func.count()).select_from(Listing)
+    for condition in base_conditions:
+        count_query = count_query.where(condition)
     count_result = await db.execute(count_query)
     total = count_result.scalar_one()
 
@@ -292,12 +304,25 @@ async def search_listings(
     result = await db.execute(query)
     items = list(result.scalars().all())
 
-    # Hybrid re-rank: keyword-matched items first, then vector distance for rest
-    if sort_by == "relevant" and query_vec and keyword:
-        kw_lower = keyword.lower()
+    # ── Stage 2b: Re-rank exact matches to top ──
+    # Priority: exact title match > exact description match > semantic relevance
+    if kw_lower:
         items.sort(key=lambda r: (
-            0 if kw_lower in r.title.lower() or kw_lower in (r.description or "").lower() else 1,
+            0 if kw_lower in r.title.lower() else
+            1 if kw_lower in (r.description or "").lower() else 2,
         ))
+
+    # ── Stage 3: Fallback — supplement with category-based results if too few ──
+    if len(items) < limit and kw_lower and not category_id:
+        existing_ids = {item.id for item in items}
+        fallback = select(Listing).options(selectinload(Listing.seller))  # type: ignore[arg-type]
+        for condition in base_conditions:
+            fallback = fallback.where(condition)
+        fallback = fallback.where(Listing.id.notin_(existing_ids))  # type: ignore[attr-defined]
+        fallback = fallback.order_by(desc(Listing.view_count), desc(Listing.created_at))  # type: ignore[arg-type]
+        fallback = fallback.limit(limit - len(items))
+        fallback_result = await db.execute(fallback)
+        items.extend(list(fallback_result.scalars().all()))
 
     return items, total
 
@@ -326,22 +351,22 @@ async def get_related_listings(
     if listing.embedding is not None:
         count_result = await db.execute(
             select(func.count()).select_from(Listing).where(
-                Listing.status == ListingStatus.ACTIVE,
-                Listing.id != listing.id,
-                Listing.embedding.isnot(None),
+                Listing.status == ListingStatus.ACTIVE,  # type: ignore[arg-type]
+                Listing.id != listing.id,  # type: ignore[arg-type]
+                Listing.embedding.isnot(None),  # type: ignore[attr-defined]
             )
         )
         total = count_result.scalar_one()
 
         result = await db.execute(
             select(Listing)
-            .options(selectinload(Listing.seller))
+            .options(selectinload(Listing.seller))  # type: ignore[arg-type]
             .where(
-                Listing.status == ListingStatus.ACTIVE,
-                Listing.id != listing.id,
-                Listing.embedding.isnot(None),
+                Listing.status == ListingStatus.ACTIVE,  # type: ignore[arg-type]
+                Listing.id != listing.id,  # type: ignore[arg-type]
+                Listing.embedding.isnot(None),  # type: ignore[attr-defined]
             )
-            .order_by(Listing.embedding.cosine_distance(listing.embedding))
+            .order_by(Listing.embedding.cosine_distance(listing.embedding))  # type: ignore[attr-defined]
             .offset(skip)
             .limit(limit)
         )
@@ -351,13 +376,13 @@ async def get_related_listings(
             existing_ids = [item.id for item in items] + [listing.id]
             more = await db.execute(
                 select(Listing)
-                .options(selectinload(Listing.seller))
+                .options(selectinload(Listing.seller))  # type: ignore[arg-type]
                 .where(
-                    Listing.status == ListingStatus.ACTIVE,
-                    Listing.id.notin_(existing_ids),
-                    Listing.category_id == listing.category_id,
+                    Listing.status == ListingStatus.ACTIVE,  # type: ignore[arg-type]
+                    Listing.id.notin_(existing_ids),  # type: ignore[attr-defined]
+                    Listing.category_id == listing.category_id,  # type: ignore[arg-type]
                 )
-                .order_by(desc(Listing.created_at))
+                .order_by(desc(Listing.created_at))  # type: ignore[arg-type]
                 .limit(limit - len(items))
             )
             items.extend(list(more.scalars().all()))

@@ -1,18 +1,18 @@
 import json
 import logging
 import math
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.ai_client import ai_client
 from app.core.exceptions import AllModelsExhaustedError
 from app.db.session import AsyncSessionLocal
+from app.models.enums import ListingStatus
 from app.models.faq import FaqChunk
 from app.models.listing import Listing
-from app.models.enums import ListingStatus
 from app.services.faq_cache import faq_cache
 
 logger = logging.getLogger(__name__)
@@ -222,14 +222,14 @@ async def _ask_local_rag(question: str) -> dict:
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(FaqChunk)
-            .where(FaqChunk.embedding.isnot(None))
-            .order_by(FaqChunk.embedding.cosine_distance(query_vec))
+            .where(FaqChunk.embedding.isnot(None))  # type: ignore[attr-defined]
+            .order_by(FaqChunk.embedding.cosine_distance(query_vec))  # type: ignore[attr-defined]
             .limit(1)
         )
         chunk = result.scalar_one_or_none()
 
     if chunk:
-        distance = _cosine_distance(query_vec, chunk.embedding)
+        distance = _cosine_distance(query_vec, chunk.embedding or [])
         similarity = 1.0 - distance
         logger.info("Local RAG match: similarity=%.4f, question=%s", similarity, chunk.question[:50])
 
@@ -246,7 +246,7 @@ async def _ask_local_rag(question: str) -> dict:
 def _cosine_distance(vec1: list[float], vec2: list[float]) -> float:
     if not vec1 or not vec2:
         return 1.0
-    dot = sum(a * b for a, b in zip(vec1, vec2))
+    dot = sum(a * b for a, b in zip(vec1, vec2, strict=False))
     norm1 = math.sqrt(sum(a * a for a in vec1))
     norm2 = math.sqrt(sum(b * b for b in vec2))
     if norm1 == 0 or norm2 == 0:
@@ -298,8 +298,8 @@ async def _execute_search_faq(query: str) -> dict:
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(FaqChunk)
-            .where(FaqChunk.embedding.isnot(None))
-            .order_by(FaqChunk.embedding.cosine_distance(query_vec))
+            .where(FaqChunk.embedding.isnot(None))  # type: ignore[attr-defined]
+            .order_by(FaqChunk.embedding.cosine_distance(query_vec))  # type: ignore[attr-defined]
             .limit(1)
         )
         chunk = result.scalar_one_or_none()
@@ -317,17 +317,22 @@ async def _execute_search_products(keyword: str, min_price: float | None = None,
     query_vec = await ai_client.embed_one(keyword, prefix="query: ")
 
     async with AsyncSessionLocal() as db:
-        query = select(Listing).options(selectinload(Listing.seller)).where(Listing.status == ListingStatus.ACTIVE)
+        query = select(Listing).options(selectinload(Listing.seller)).where(Listing.status == ListingStatus.ACTIVE)  # type: ignore[arg-type]
 
         if min_price is not None:
-            query = query.where(Listing.price >= min_price)
+            query = query.where(Listing.price >= min_price)  # type: ignore[arg-type]
         if max_price is not None:
-            query = query.where(Listing.price <= max_price)
+            query = query.where(Listing.price <= max_price)  # type: ignore[arg-type]
 
         if query_vec:
-            query = query.order_by(Listing.embedding.cosine_distance(query_vec))
+            query = query.where(Listing.embedding.isnot(None))  # type: ignore[attr-defined]
+            query = query.order_by(Listing.embedding.cosine_distance(query_vec))  # type: ignore[attr-defined]
         else:
-            query = query.order_by(Listing.created_at.desc())
+            keyword_filter = f"%{keyword}%"
+            query = query.where(
+                Listing.title.ilike(keyword_filter) | Listing.description.ilike(keyword_filter)  # type: ignore[arg-type]
+            )
+            query = query.order_by(Listing.created_at.desc())  # type: ignore[attr-defined]
 
         result = await db.execute(query.limit(10))
         items = result.scalars().all()
@@ -355,7 +360,7 @@ async def _execute_get_product_detail(product_id: str) -> dict:
 
     async with AsyncSessionLocal() as db:
         result = await db.execute(
-            select(Listing).options(selectinload(Listing.seller)).where(Listing.id == uid)
+            select(Listing).options(selectinload(Listing.seller)).where(Listing.id == uid)  # type: ignore[arg-type]
         )
         item = result.scalar_one_or_none()
 
@@ -379,14 +384,14 @@ async def _execute_get_product_detail(product_id: str) -> dict:
 
 
 async def _execute_get_trending_products() -> dict:
-    cutoff = datetime.utcnow() - timedelta(days=14)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=14)
 
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(Listing)
-            .options(selectinload(Listing.seller))
-            .where(Listing.status == ListingStatus.ACTIVE, Listing.created_at >= cutoff)
-            .order_by(Listing.view_count.desc())
+            .options(selectinload(Listing.seller))  # type: ignore[arg-type]
+            .where(Listing.status == ListingStatus.ACTIVE, Listing.created_at >= cutoff)  # type: ignore[arg-type]
+            .order_by(Listing.view_count.desc())  # type: ignore[attr-defined]
             .limit(10)
         )
         items = result.scalars().all()

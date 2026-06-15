@@ -98,10 +98,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # ty
 # GZip compression for responses
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-# CORS - use explicit origins from config for security
+# CORS - allow all origins (for development convenience)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=["*"],
+    # allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept"],

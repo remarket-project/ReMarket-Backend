@@ -1,12 +1,12 @@
 import uuid
 
-from pgvector.sqlalchemy import Vector
+from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
 from sqlalchemy import Column, Text
 from sqlmodel import Field, SQLModel
 
 
 class FaqChunk(SQLModel, table=True):
-    __tablename__ = "faq_chunks"
+    __tablename__ = "faq_chunks"  # type: ignore[override]
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     question: str = Field(max_length=500)

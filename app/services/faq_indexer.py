@@ -22,7 +22,7 @@ async def index_faq():
         items = json.load(f)
 
     async with AsyncSessionLocal() as db:
-        await db.execute(FaqChunk.__table__.delete())
+        await db.execute(FaqChunk.__table__.delete())  # type: ignore[attr-defined]
         await db.commit()
 
         for item in items:

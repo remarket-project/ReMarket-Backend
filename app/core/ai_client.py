@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from typing import Any
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -16,7 +17,7 @@ _GEMINI_SEMAPHORE = asyncio.Semaphore(5)
 class AIClient:
 
     def __init__(self):
-        self._gemini_clients: dict[str, any] = {}
+        self._gemini_clients: dict[str, Any] = {}
         self._local_embed_model = None
         self._embed_cache: dict[str, list[float]] = {}
 
@@ -83,8 +84,7 @@ class AIClient:
         messages: list[dict],
         tools: list[dict] | None = None,
     ) -> str:
-        from google import genai
-        from google.genai import types
+        from google.genai import types  # type: ignore[import-untyped]
 
         client = self._get_gemini_client(api_key)
 
@@ -109,7 +109,7 @@ class AIClient:
             response = await client.aio.models.generate_content(
                 model=model,
                 contents=contents,
-                config=types.GenerateContentConfig(**config_kwargs),
+                config=types.GenerateContentConfig(**config_kwargs),  # type: ignore[arg-type]
             )
         except Exception as e:
             err_str = str(e).lower()
@@ -133,7 +133,7 @@ class AIClient:
 
     def _get_gemini_client(self, api_key: str):
         if api_key not in self._gemini_clients:
-            from google import genai
+            from google import genai  # type: ignore[import-untyped]
             self._gemini_clients[api_key] = genai.Client(api_key=api_key)
         return self._gemini_clients[api_key]
 
@@ -168,7 +168,9 @@ class AIClient:
     def _get_local_embed_model(self):
         if self._local_embed_model is None:
             try:
-                from sentence_transformers import SentenceTransformer
+                from sentence_transformers import (
+                    SentenceTransformer,  # type: ignore[import-untyped]
+                )
                 logger.info("Loading embed model: %s", settings.LOCAL_EMBED_MODEL)
                 self._local_embed_model = SentenceTransformer(settings.LOCAL_EMBED_MODEL)
             except Exception as e:
