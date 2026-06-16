@@ -616,6 +616,14 @@ class ModerationSettingsBody(BaseModel):
     enabled: bool
 
 
+@router.get("/settings/ai-moderation")
+async def get_ai_moderation(
+    admin_user: CurrentAdmin,
+):
+    """Admin: Xem trạng thái AI tự động duyệt tin."""
+    return {"ai_moderation_enabled": settings.AI_MODERATION_ENABLED}
+
+
 @router.patch("/settings/ai-moderation")
 async def toggle_ai_moderation(
     admin_user: CurrentAdmin,
