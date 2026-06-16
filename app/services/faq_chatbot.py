@@ -161,6 +161,8 @@ async def _ask_gemini(question: str, history: list[dict] | None) -> dict:
     messages.append({"role": "user", "content": question})
 
     max_tool_rounds = 3
+    found_products: list[dict] = []
+    found_faq_answer: str | None = None
 
     for _ in range(max_tool_rounds):
         try:
@@ -174,22 +176,31 @@ async def _ask_gemini(question: str, history: list[dict] | None) -> dict:
         try:
             parsed = json.loads(raw_response)
         except json.JSONDecodeError:
-            return {"answer": raw_response, "source": "ai_assist", "mode": "gemini"}
+            break
 
         if "function_call" not in parsed:
-            return {"answer": raw_response, "source": "ai_assist", "mode": "gemini"}
+            break
 
         fc = parsed["function_call"]
         tool_fn = TOOL_DISPATCH.get(fc["name"])
         if not tool_fn:
             logger.warning("Unknown tool call: %s", fc["name"])
-            return {"answer": "Xin lỗi, có lỗi xảy ra khi xử lý yêu cầu.", "source": None, "mode": "gemini"}
+            break
 
         try:
-            result = await tool_fn(fc["args"] if isinstance(fc["args"], dict) else {})
+            args = fc["args"] if isinstance(fc["args"], dict) else {}
+            result = await tool_fn(args)
         except Exception as e:
             logger.error("Tool %s failed: %s", fc["name"], e)
-            return {"answer": "Xin lỗi, đã có lỗi xảy ra khi tra cứu thông tin.", "source": None, "mode": "gemini"}
+            break
+
+        # Track structured data from tool results
+        if fc["name"] in ("search_products", "get_trending_products"):
+            found_products.extend(result.get("products", []))
+        elif fc["name"] == "get_product_detail" and result.get("found"):
+            found_products.append(result["product"])
+        elif fc["name"] == "search_faq" and result.get("found"):
+            found_faq_answer = result.get("answer")
 
         messages.append({"role": "model", "content": raw_response})
         messages.append({"role": "user", "content": json.dumps(result, ensure_ascii=False)})
@@ -202,7 +213,16 @@ async def _ask_gemini(question: str, history: list[dict] | None) -> dict:
         logger.error("Gemini final chat failed: %s", e)
         raise AllModelsExhaustedError(str(e))
 
-    return {"answer": final_answer, "source": "ai_assist", "mode": "gemini"}
+    # Generate suggested actions based on context
+    suggested_actions = _generate_suggested_actions(found_products, final_answer, bool(found_faq_answer))
+
+    return {
+        "answer": final_answer,
+        "products": found_products,
+        "suggested_actions": suggested_actions,
+        "source": "ai_assist",
+        "mode": "gemini",
+    }
 
 
 # ─── Local RAG Fallback (không cần Gemini) ──────────────────────
@@ -317,7 +337,11 @@ async def _execute_search_products(keyword: str, min_price: float | None = None,
     query_vec = await ai_client.embed_one(keyword, prefix="query: ")
 
     async with AsyncSessionLocal() as db:
-        query = select(Listing).options(selectinload(Listing.seller)).where(Listing.status == ListingStatus.ACTIVE)  # type: ignore[arg-type]
+        query = (
+            select(Listing)
+            .options(selectinload(Listing.seller), selectinload(Listing.images))
+            .where(Listing.status == ListingStatus.ACTIVE)
+        )
 
         if min_price is not None:
             query = query.where(Listing.price >= min_price)  # type: ignore[arg-type]
@@ -339,6 +363,9 @@ async def _execute_search_products(keyword: str, min_price: float | None = None,
 
     products = []
     for item in items:
+        primary_img = next((img.image_url for img in (item.images or []) if img.is_primary), None)
+        if not primary_img and item.images:
+            primary_img = item.images[0].image_url
         products.append({
             "id": str(item.id),
             "title": item.title,
@@ -346,6 +373,7 @@ async def _execute_search_products(keyword: str, min_price: float | None = None,
             "condition": item.condition_grade or "unknown",
             "location": item.location_summary or "",
             "seller": item.seller.full_name if item.seller else "Unknown",
+            "image_url": primary_img,
             "created_at": item.created_at.isoformat() if item.created_at else "",
         })
 
@@ -360,12 +388,18 @@ async def _execute_get_product_detail(product_id: str) -> dict:
 
     async with AsyncSessionLocal() as db:
         result = await db.execute(
-            select(Listing).options(selectinload(Listing.seller)).where(Listing.id == uid)  # type: ignore[arg-type]
+            select(Listing)
+            .options(selectinload(Listing.seller), selectinload(Listing.images))
+            .where(Listing.id == uid)
         )
         item = result.scalar_one_or_none()
 
     if not item:
         return {"found": False, "error": "Không tìm thấy sản phẩm"}
+
+    primary_img = next((img.image_url for img in (item.images or []) if img.is_primary), None)
+    if not primary_img and item.images:
+        primary_img = item.images[0].image_url
 
     return {
         "found": True,
@@ -377,6 +411,7 @@ async def _execute_get_product_detail(product_id: str) -> dict:
             "condition": item.condition_grade or "unknown",
             "location": item.location_summary or "",
             "seller": item.seller.full_name if item.seller else "Unknown",
+            "image_url": primary_img,
             "created_at": item.created_at.isoformat() if item.created_at else "",
             "updated_at": item.updated_at.isoformat() if item.updated_at else "",
         },
@@ -389,15 +424,18 @@ async def _execute_get_trending_products() -> dict:
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(Listing)
-            .options(selectinload(Listing.seller))  # type: ignore[arg-type]
-            .where(Listing.status == ListingStatus.ACTIVE, Listing.created_at >= cutoff)  # type: ignore[arg-type]
-            .order_by(Listing.view_count.desc())  # type: ignore[attr-defined]
+            .options(selectinload(Listing.seller), selectinload(Listing.images))
+            .where(Listing.status == ListingStatus.ACTIVE, Listing.created_at >= cutoff)
+            .order_by(Listing.view_count.desc())
             .limit(10)
         )
         items = result.scalars().all()
 
     products = []
     for item in items:
+        primary_img = next((img.image_url for img in (item.images or []) if img.is_primary), None)
+        if not primary_img and item.images:
+            primary_img = item.images[0].image_url
         products.append({
             "id": str(item.id),
             "title": item.title,
@@ -406,9 +444,45 @@ async def _execute_get_trending_products() -> dict:
             "location": item.location_summary or "",
             "views": item.view_count or 0,
             "seller": item.seller.full_name if item.seller else "Unknown",
+            "image_url": primary_img,
         })
 
     return {"products": products, "total": len(products)}
+
+
+def _generate_suggested_actions(products: list[dict], answer: str, has_faq: bool) -> list[dict]:
+    actions = []
+
+    # Actions based on found products
+    if products:
+        if len(products) > 1:
+            actions.append({"label": f"🔍 Xem chi tiết sản phẩm đầu tiên", "payload": f"Xem thông tin sản phẩm {products[0]['id']}"})
+            actions.append({"label": "📋 Xem tất cả sản phẩm", "payload": "Tìm sản phẩm tương tự"})
+        else:
+            actions.append({"label": "🔍 Xem chi tiết", "payload": f"Xem thông tin sản phẩm {products[0]['id']}"})
+            actions.append({"label": "🔎 Tìm sản phẩm tương tự", "payload": f"Tìm sản phẩm giống {products[0]['title'][:50]}"})
+
+    # FAQ-related actions
+    if has_faq:
+        actions.append({"label": "📖 Xem thêm câu hỏi", "payload": "Các câu hỏi thường gặp"})
+
+    # General contextual actions
+    answer_lower = answer.lower()
+    if "iphone" in answer_lower or "samsung" in answer_lower or "laptop" in answer_lower:
+        pass  # already have product actions
+    elif "phí" in answer_lower or "escrow" in answer_lower or "thanh toán" in answer_lower:
+        actions.append({"label": "💰 Hướng dẫn thanh toán", "payload": "Hướng dẫn thanh toán escrow"})
+        actions.append({"label": "📦 Đăng tin bán hàng", "payload": "Làm thế nào để đăng tin bán hàng?"})
+
+    # Deduplicate by payload
+    seen = set()
+    unique = []
+    for a in actions:
+        if a["payload"] not in seen:
+            seen.add(a["payload"])
+            unique.append(a)
+
+    return unique[:4]  # max 4 actions
 
 
 TOOL_DISPATCH = {

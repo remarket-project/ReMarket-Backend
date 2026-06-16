@@ -16,10 +16,26 @@ class FaqQuestion(BaseModel):
     history: list[Message] | None = None
 
 
+class FaqProduct(BaseModel):
+    id: str
+    title: str
+    price: float
+    condition: str
+    location: str
+    seller: str
+    image_url: str | None = None
+
+class FaqSuggestedAction(BaseModel):
+    label: str
+    payload: str
+
+
 class FaqResponse(BaseModel):
     answer: str
     source: str | None = None
     mode: str = "gemini"
+    products: list[FaqProduct] = []
+    suggested_actions: list[FaqSuggestedAction] = []
 
 
 @router.post("/ask")
