@@ -349,6 +349,19 @@ async def create_listing(
         _embed_listing_in_background, str(new_listing.id)
     )
 
+    # Trigger AI moderation ngay khi tạo (text-only, không ảnh)
+    if settings.AI_MODERATION_ENABLED and settings.NINE_ROUTER_BASE_URL:
+        from app.services.moderation import run_moderation
+
+        background_tasks.add_task(
+            run_moderation,
+            listing_id=str(new_listing.id),
+            title=new_listing.title,
+            description=new_listing.description,
+            category_name=category.name if category else "",
+            image_urls=None,
+        )
+
     admin_ids = await get_admin_user_ids(db)
     if admin_ids:
         await ws_manager.broadcast_to_users(admin_ids, {"type": "new_pending_listing"})
@@ -530,6 +543,7 @@ async def upload_listing_images_bulk(
     current_user: CurrentUser,
     db: SessionDep,
     listing_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(..., description="Danh sách ảnh (tối đa 10)"),
     is_primary: list[bool] = Form(default=[]),
 ):
@@ -631,5 +645,19 @@ async def upload_listing_images_bulk(
             db, str(listing_id), image_url, this_primary,
         )
         new_images.append(new_image)
+
+    # Trigger AI moderation nếu được bật
+    if settings.AI_MODERATION_ENABLED and settings.NINE_ROUTER_BASE_URL:
+        from app.services.moderation import run_moderation
+
+        image_urls = [img.image_url for img in new_images]
+        background_tasks.add_task(
+            run_moderation,
+            listing_id=str(listing_id),
+            title=listing.title,
+            description=listing.description,
+            category_name=listing.category.name if listing.category else "",
+            image_urls=image_urls,
+        )
 
     return new_images

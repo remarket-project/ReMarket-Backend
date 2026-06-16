@@ -63,7 +63,7 @@ async def create_listing(
 async def get_listing(db: AsyncSession, listing_id: str) -> Listing | None:
     """Get listing by ID."""
     result = await db.execute(
-        select(Listing).options(joinedload(Listing.seller)).where(Listing.id == _to_uuid(listing_id))  # type: ignore[arg-type]
+        select(Listing).options(joinedload(Listing.seller), joinedload(Listing.category)).where(Listing.id == _to_uuid(listing_id))  # type: ignore[arg-type]
     )
     return result.scalar_one_or_none()
 

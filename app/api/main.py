@@ -12,6 +12,7 @@ from app.api.routes import (
     escrow,
     faq,
     listings,
+    moderation_log,
     notifications,
     offers,
     orders,
@@ -44,6 +45,7 @@ api_router.include_router(orders.router)
 api_router.include_router(reviews.router)
 api_router.include_router(admin.router)
 api_router.include_router(admin_audit.router)
+api_router.include_router(moderation_log.router)
 api_router.include_router(chat.router)
 api_router.include_router(saved_follow.router)
 api_router.include_router(notifications.router)

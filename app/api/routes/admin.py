@@ -1,9 +1,12 @@
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import desc, func, select
+from sqlalchemy.orm import joinedload
 
 from app.core.config import settings
 from app.core.websocket_manager import ws_manager
@@ -607,3 +610,59 @@ async def admin_get_dispute(
     if not dispute:
         raise HTTPException(status_code=404, detail="Dispute not found")
     return dispute
+
+
+class ModerationSettingsBody(BaseModel):
+    enabled: bool
+
+
+@router.patch("/settings/ai-moderation")
+async def toggle_ai_moderation(
+    admin_user: CurrentAdmin,
+    settings_body: ModerationSettingsBody,
+    background_tasks: BackgroundTasks,
+):
+    """Admin: Bật/tắt AI tự động duyệt tin. Khi bật, tự động xử lý các tin PENDING."""
+    settings.AI_MODERATION_ENABLED = settings_body.enabled
+    if settings_body.enabled and settings.NINE_ROUTER_BASE_URL:
+        background_tasks.add_task(_moderate_all_pending)
+    return {"ai_moderation_enabled": settings.AI_MODERATION_ENABLED}
+
+
+async def _moderate_all_pending():
+    """Duyệt tất cả tin PENDING bằng AI khi bật toggle."""
+    from app.crud.crud_listing import get_images_for_listings
+    from app.db.session import AsyncSessionLocal
+    from app.models.enums import ListingStatus
+    from app.models.listing import Listing
+    from app.services.moderation import run_moderation
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Listing)
+            .options(joinedload(Listing.category))
+            .where(Listing.status == ListingStatus.PENDING)
+        )
+        listings = list(result.unique().scalars().all())
+        if not listings:
+            logger.info("_moderate_all_pending: không có tin PENDING nào")
+            return
+
+        listing_ids = [l.id for l in listings]
+        images_by_listing = await get_images_for_listings(db, listing_ids)
+
+        logger.info("_moderate_all_pending: bắt đầu duyệt %d tin", len(listings))
+        for listing in listings:
+            image_urls = [
+                img.image_url
+                for img in images_by_listing.get(listing.id, [])
+            ]
+            await run_moderation(
+                listing_id=str(listing.id),
+                title=listing.title,
+                description=listing.description,
+                category_name=listing.category.name if listing.category else "",
+                image_urls=image_urls,
+            )
+            await asyncio.sleep(0.5)  # tránh rate-limit
+        logger.info("_moderate_all_pending: hoàn tất %d tin", len(listings))

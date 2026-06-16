@@ -216,6 +216,31 @@ class Settings(BaseSettings):
     AI_MAX_RETRIES: int = 2
     AI_TIMEOUT_SECONDS: int = 30
 
+    # ─── 9Router (AI Moderation Gateway) ────────────
+    NINE_ROUTER_BASE_URL: str = Field(
+        default="",
+        description="9Router endpoint: http://9router:20128/v1",
+    )
+    NINE_ROUTER_API_KEY: str = Field(
+        default="",
+        description="9Router API key (mặc định 'sk-9router')",
+    )
+
+    # ─── AI Moderation ──────────────────────────────
+    AI_MODERATION_ENABLED: bool = Field(
+        default=False,
+        description="Bật/tắt AI tự động duyệt tin",
+    )
+    AI_MODERATION_MODELS: list[str] = Field(
+        default=[
+            "oc/mimo-v2.5-free",
+            "oc/deepseek-v4-flash-free",
+            "kr/claude-sonnet-4.5",
+            "kr/claude-haiku-4.5",
+        ],
+        description="Danh sách model ưu tiên trên 9Router (OC free trước, Kiro fallback)",
+    )
+
     # File Upload
     UPLOAD_DIR: str = "uploads"
 

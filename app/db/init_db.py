@@ -6,6 +6,7 @@ Creates all tables on startup and migrates existing tables.
 from sqlmodel import SQLModel, text
 
 import app.models.admin_audit  # noqa: F401
+import app.models.moderation_log  # noqa: F401
 
 # Ensure model metadata is registered before create_all runs
 import app.models.category  # noqa: F401

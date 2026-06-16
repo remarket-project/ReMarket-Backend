@@ -2,6 +2,7 @@
 from sqlmodel import SQLModel
 
 from app.models.admin_audit import AdminAuditLog
+from app.models.moderation_log import ModerationLog
 from app.models.category import (
     CategoriesPublic,
     Category,
@@ -66,8 +67,8 @@ __all__ = [
     "User",
     "Category",
     "CategoriesPublic",
-    "CategoryCreate",
     "CategoryPublic",
+    "CategoryCreate",
     "CategoryUpdate",
     "Listing",
     "Item",
@@ -82,6 +83,7 @@ __all__ = [
     "SavedListing",
     "FollowSeller",
     "AdminAuditLog",
+    "ModerationLog",
     "StaticContent",
     "Review",
     "Notification",
