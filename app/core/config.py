@@ -234,9 +234,9 @@ class Settings(BaseSettings):
     AI_MODERATION_MODELS: list[str] = Field(
         default=[
             "oc/mimo-v2.5-free",
-            "oc/deepseek-v4-flash-free",
             "kr/claude-sonnet-4.5",
             "kr/claude-haiku-4.5",
+            "oc/deepseek-v4-flash-free",
         ],
         description="Danh sách model ưu tiên trên 9Router (OC free trước, Kiro fallback)",
     )

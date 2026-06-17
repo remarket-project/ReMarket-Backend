@@ -168,11 +168,14 @@ class AIClient:
     def _get_local_embed_model(self):
         if self._local_embed_model is None:
             try:
-                from sentence_transformers import (
-                    SentenceTransformer,  # type: ignore[import-untyped]
+                from sentence_transformers import (  # type: ignore[import-untyped]
+                    SentenceTransformer,
                 )
                 logger.info("Loading embed model: %s", settings.LOCAL_EMBED_MODEL)
                 self._local_embed_model = SentenceTransformer(settings.LOCAL_EMBED_MODEL)
+            except ImportError:
+                logger.warning("sentence-transformers not installed; local embedding unavailable")
+                raise
             except Exception as e:
                 logger.critical("Failed to load embedding model '%s': %s", settings.LOCAL_EMBED_MODEL, e)
                 raise

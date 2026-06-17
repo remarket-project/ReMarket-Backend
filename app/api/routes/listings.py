@@ -349,19 +349,6 @@ async def create_listing(
         _embed_listing_in_background, str(new_listing.id)
     )
 
-    # Trigger AI moderation ngay khi tạo (text-only, không ảnh)
-    if settings.AI_MODERATION_ENABLED and settings.NINE_ROUTER_BASE_URL:
-        from app.services.moderation import run_moderation
-
-        background_tasks.add_task(
-            run_moderation,
-            listing_id=str(new_listing.id),
-            title=new_listing.title,
-            description=new_listing.description,
-            category_name=category.name if category else "",
-            image_urls=None,
-        )
-
     admin_ids = await get_admin_user_ids(db)
     if admin_ids:
         await ws_manager.broadcast_to_users(admin_ids, {"type": "new_pending_listing"})

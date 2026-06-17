@@ -43,7 +43,7 @@ def _get_client() -> AsyncOpenAI:
         _nine_router_client = AsyncOpenAI(
             base_url=settings.NINE_ROUTER_BASE_URL,
             api_key=settings.NINE_ROUTER_API_KEY or "sk-9router",
-            timeout=httpx.Timeout(60.0, connect=5.0),
+            timeout=httpx.Timeout(30.0, connect=5.0),
         )
     return _nine_router_client
 

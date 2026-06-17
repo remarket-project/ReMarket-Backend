@@ -89,12 +89,16 @@ dependencies = [
     { name = "pyjwt" },
     { name = "python-jose", extra = ["cryptography"] },
     { name = "python-multipart" },
-    { name = "sentence-transformers" },
     { name = "sentry-sdk", extra = ["fastapi"] },
     { name = "slowapi" },
     { name = "sqlmodel" },
     { name = "stripe" },
     { name = "tenacity" },
+]
+
+[package.optional-dependencies]
+ml = [
+    { name = "sentence-transformers" },
 ]
 
 [package.dev-dependencies]
@@ -132,13 +136,14 @@ requires-dist = [
     { name = "pyjwt", specifier = ">=2.8.0,<3.0.0" },
     { name = "python-jose", extras = ["cryptography"], specifier = ">=3.3.0" },
     { name = "python-multipart", specifier = ">=0.0.7,<1.0.0" },
-    { name = "sentence-transformers", specifier = ">=3.0.0" },
+    { name = "sentence-transformers", marker = "extra == 'ml'", specifier = ">=3.0.0" },
     { name = "sentry-sdk", extras = ["fastapi"], specifier = ">=2.0.0,<3.0.0" },
     { name = "slowapi", specifier = ">=0.1.9" },
     { name = "sqlmodel", specifier = ">=0.0.21,<1.0.0" },
     { name = "stripe", specifier = ">=15.0.0" },
     { name = "tenacity", specifier = ">=8.2.3,<9.0.0" },
 ]
+provides-extras = ["ml"]
 
 [package.metadata.requires-dev]
 dev = [
