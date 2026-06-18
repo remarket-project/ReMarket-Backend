@@ -1,5 +1,6 @@
+import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
@@ -73,6 +74,29 @@ async def create_direct_order(
         order.shipping_district_id = addr.district_id
         order.shipping_ward_code = addr.ward_code
         db.add(order)
+
+    # Geocode coordinates for delivery map
+    from app.services.geocode import build_seller_address, build_shipping_address, geocode_address
+
+    seller_addr = build_seller_address(listing.location_summary)
+    buyer_addr = build_shipping_address(
+        order.shipping_address_detail, order.shipping_ward,
+        order.shipping_district, order.shipping_province,
+    )
+
+    seller_coords, buyer_coords = await asyncio.gather(
+        geocode_address(seller_addr), geocode_address(buyer_addr),
+    )
+
+    order.seller_lat = seller_coords[0] if seller_coords else None
+    order.seller_lng = seller_coords[1] if seller_coords else None
+    order.shipping_lat = buyer_coords[0] if buyer_coords else None
+    order.shipping_lng = buyer_coords[1] if buyer_coords else None
+
+    # Set auto-ship timer for simulation worker
+    order.auto_ship_at = datetime.now(timezone.utc) + timedelta(
+        seconds=settings.SIMULATION_PENDING_TO_SHIPPING_SECONDS
+    )
 
     # Auto-create escrow for direct order flow.
     existing_escrow = await crud_escrow.get_escrow_by_order_id(db, order.id)
@@ -348,6 +372,13 @@ async def ship_order(
         raise HTTPException(status_code=400, detail=f"Không thể gửi hàng ở trạng thái {order.status}")
 
     order.status = OrderStatus.SHIPPING
+
+    # Seller tu ship -> set auto-deliver timer, clear auto-ship
+    order.auto_ship_at = None
+    order.auto_deliver_at = datetime.now(timezone.utc) + timedelta(
+        seconds=settings.SIMULATION_SHIPPING_TO_DELIVERED_SECONDS
+    )
+
     if data.tracking_number:
         order.tracking_number = data.tracking_number
     if data.shipping_provider:

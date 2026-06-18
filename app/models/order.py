@@ -67,6 +67,20 @@ class Order(BaseUUID, table=True):
         default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
     )
 
+    # Simulation auto-transition timers
+    auto_ship_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
+    auto_deliver_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
+
+    # Delivery map coordinates (geocoded at order creation)
+    seller_lat: float | None = None
+    seller_lng: float | None = None
+    shipping_lat: float | None = None
+    shipping_lng: float | None = None
+
     created_at: datetime = Field(
         sa_column=Column(
             DateTime(timezone=True),

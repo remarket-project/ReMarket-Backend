@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, HTTPException, status
 from pydantic import BaseModel
@@ -397,6 +397,16 @@ async def admin_ship_order(
         raise HTTPException(status_code=400, detail=f"Cannot ship order with status {order.status}")
 
     updated = await crud_order.update_order_status(db, order_id, OrderStatus.SHIPPING)
+
+    # Clear auto-ship timer, set auto-deliver timer (admin chu dong ship)
+    updated.auto_ship_at = None
+    updated.auto_deliver_at = datetime.now(timezone.utc) + timedelta(
+        seconds=settings.SIMULATION_SHIPPING_TO_DELIVERED_SECONDS
+    )
+    db.add(updated)
+    await db.commit()
+    await db.refresh(updated)
+
     await _log_admin_action(db, admin_user, "order_shipped", "order", str(order_id))
 
     await ws_manager.send_to_user(order.buyer_id, {
@@ -419,8 +429,6 @@ async def admin_deliver_order(
     db: SessionDep,
 ):
     """Admin: SHIPPING → DELIVERED (set auto-complete timer)"""
-    from datetime import timedelta
-
     order = await crud_order.get_order_by_id(db, order_id)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -431,6 +439,10 @@ async def admin_deliver_order(
     order.delivered_at_record = datetime.now(timezone.utc)
     order.auto_complete_at = order.delivered_at_record + timedelta(hours=settings.ORDER_AUTO_COMPLETE_HOURS)
     order.updated_at = datetime.now(timezone.utc)
+
+    # Clear auto-deliver timer (admin chu dong)
+    order.auto_deliver_at = None
+
     db.add(order)
     await db.commit()
     await db.refresh(order)

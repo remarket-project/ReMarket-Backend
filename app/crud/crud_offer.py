@@ -3,6 +3,7 @@ CRUD operations for Offer model.
 
 Handles creation, retrieval, and updates of offers (negotiations).
 """
+import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -342,6 +343,29 @@ async def confirm_offer_and_create_order(
         order.shipping_province_id = shipping_address.province_id
         order.shipping_district_id = shipping_address.district_id
         order.shipping_ward_code = shipping_address.ward_code
+
+    # Geocode coordinates for delivery map
+    from app.services.geocode import build_seller_address, build_shipping_address, geocode_address
+
+    seller_addr = build_seller_address(listing.location_summary)
+    buyer_addr = build_shipping_address(
+        order.shipping_address_detail, order.shipping_ward,
+        order.shipping_district, order.shipping_province,
+    )
+
+    seller_coords, buyer_coords = await asyncio.gather(
+        geocode_address(seller_addr), geocode_address(buyer_addr),
+    )
+
+    order.seller_lat = seller_coords[0] if seller_coords else None
+    order.seller_lng = seller_coords[1] if seller_coords else None
+    order.shipping_lat = buyer_coords[0] if buyer_coords else None
+    order.shipping_lng = buyer_coords[1] if buyer_coords else None
+
+    # Set auto-ship timer
+    order.auto_ship_at = datetime.now(timezone.utc) + timedelta(
+        seconds=settings.SIMULATION_PENDING_TO_SHIPPING_SECONDS
+    )
 
     # Create Escrow
     buyer_wallet = await crud_wallet.get_or_create_wallet(db, offer.buyer_id)

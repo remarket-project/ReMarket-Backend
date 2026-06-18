@@ -18,6 +18,10 @@ from app.db.init_db import init_db
 from app.db.session import AsyncSessionLocal
 from app.services.order_auto_worker import start_auto_worker, stop_auto_worker
 from app.services.ghn_polling import start_polling
+from app.services.delivery_simulation_worker import (
+    start_delivery_simulation_worker,
+    stop_delivery_simulation_worker,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -60,6 +64,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     offer_expiry_task = asyncio.create_task(_offer_expiry_worker())
     start_auto_worker()  # Order auto-complete worker
+    start_delivery_simulation_worker()  # Delivery simulation worker
     ghn_poll_task = start_polling()  # GHN polling fallback
 
     # Pre-warm embedding model to avoid cold-start delay on first listing
@@ -89,6 +94,7 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
     stop_auto_worker()  # Order auto-complete worker
+    stop_delivery_simulation_worker()  # Delivery simulation worker
     logger.info("Application shutdown complete")
 
 

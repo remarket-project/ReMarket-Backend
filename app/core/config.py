@@ -128,6 +128,11 @@ class Settings(BaseSettings):
     ORDER_AUTO_CANCEL_HOURS: int = 24
     ORDER_AUTO_CHECK_INTERVAL_SECONDS: int = 60
 
+    # Simulation delivery timers (seconds)
+    SIMULATION_PENDING_TO_SHIPPING_SECONDS: int = 30
+    SIMULATION_SHIPPING_TO_DELIVERED_SECONDS: int = 60
+    SIMULATION_CHECK_INTERVAL_SECONDS: int = 5
+
     # Withdraw limits
     WITHDRAW_MIN_AMOUNT: int = 50000
     WITHDRAW_MAX_AMOUNT: int = 50000000
