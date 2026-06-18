@@ -60,6 +60,7 @@ async def _log_admin_action(
         target_id=target_id,
         note=note,
     )
+    await _broadcast_to_admins(db, {"type": "new_admin_audit_log"})
 
 
 async def _broadcast_to_admins(db: SessionDep, message: dict) -> None:
