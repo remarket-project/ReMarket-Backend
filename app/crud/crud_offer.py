@@ -12,7 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.core.config import settings
-from app.models.enums import EscrowStatus, ListingStatus, OfferStatus, OrderStatus, PaymentMethod
+from app.models.enums import (
+    EscrowStatus,
+    ListingStatus,
+    OfferStatus,
+    OrderStatus,
+    PaymentMethod,
+)
 from app.models.listing import Listing
 from app.models.offer import Offer
 from app.models.order import Order
@@ -345,7 +351,11 @@ async def confirm_offer_and_create_order(
         order.shipping_ward_code = shipping_address.ward_code
 
     # Geocode coordinates for delivery map
-    from app.services.geocode import build_seller_address, build_shipping_address, geocode_address
+    from app.services.geocode import (
+        build_seller_address,
+        build_shipping_address,
+        geocode_address,
+    )
 
     seller_addr = build_seller_address(listing.location_summary)
     buyer_addr = build_shipping_address(

@@ -1,7 +1,7 @@
 import os
 import uuid
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from slowapi import Limiter
 from slowapi.util import get_remote_address

@@ -8,35 +8,38 @@ from pydantic import BaseModel
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import joinedload
 
+from app.api.deps import CurrentAdmin, SessionDep
 from app.core.config import settings
 from app.core.websocket_manager import ws_manager
-from app.api.deps import CurrentAdmin, SessionDep
 from app.crud import (
     crud_admin_audit,
     crud_dispute,
-    crud_escrow,
     crud_notification,
     crud_order,
-    crud_wallet,
 )
-from app.crud.crud_listing import get_listing, get_images_for_listings, get_pending_listings
-from app.crud.crud_user import get_user_by_id, get_users_list, update_user_status, get_admin_user_ids
+from app.crud.crud_listing import (
+    get_images_for_listings,
+    get_listing,
+    get_pending_listings,
+)
+from app.crud.crud_user import (
+    get_admin_user_ids,
+    get_user_by_id,
+    get_users_list,
+    update_user_status,
+)
 from app.models.enums import (
-    EscrowStatus,
     ListingStatus,
     NotificationType,
     OrderStatus,
 )
-from app.models.escrow import Escrow
 from app.models.listing import Listing
 from app.models.order import Order
 from app.models.user import User
-from app.models.wallet import WalletTransaction
 from app.schemas.dispute import DisputeRead
 from app.schemas.escrow import ResolveEscrowRequest
 from app.schemas.listing import ListingRead, ListingWithImages
 from app.schemas.user import UserMe, UserStatusUpdate
-from app.services import stripe_connect
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +86,7 @@ async def get_dashboard_stats(
         return cached
 
     import asyncio
+
     from app.models.dispute import Dispute
 
     count_users = db.execute(select(func.count()).select_from(User))

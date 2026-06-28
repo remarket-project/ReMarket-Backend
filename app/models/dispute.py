@@ -5,7 +5,7 @@ Tracks buyer/seller disputes with evidence images.
 """
 import uuid
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from sqlmodel import Field, Relationship
 

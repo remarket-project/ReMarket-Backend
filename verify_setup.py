@@ -19,18 +19,18 @@ services_dir = project_root / "app" / "services"
 if services_dir.exists():
     print(f"✅ Services directory created: {services_dir}")
     if (services_dir / "__init__.py").exists():
-        print(f"✅ __init__.py exists in services directory")
+        print("✅ __init__.py exists in services directory")
     else:
-        print(f"⚠️  __init__.py not found")
+        print("⚠️  __init__.py not found")
 
     if (services_dir / "email_service.py").exists():
-        print(f"✅ email_service.py exists in services directory")
+        print("✅ email_service.py exists in services directory")
     else:
-        print(f"⚠️  email_service.py not found")
+        print("⚠️  email_service.py not found")
 else:
-    print(f"⚠️  Services directory not created yet")
+    print("⚠️  Services directory not created yet")
     print(f"   Location: {services_dir}")
-    print(f"   Note: Directory will be created when app module is imported")
+    print("   Note: Directory will be created when app module is imported")
 
 print("\n📝 Summary:")
 print("   The app/__init__.py file contains code that creates:")

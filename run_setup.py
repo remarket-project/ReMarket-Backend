@@ -141,6 +141,6 @@ async def send_order_completed_email(buyer: User, seller: User, order: Order) ->
 
 print("✅ Services directory and files created successfully!")
 print(f"📁 Directory: {_services_dir}")
-print(f"📄 Files created:")
-print(f"   - __init__.py")
-print(f"   - email_service.py")
+print("📄 Files created:")
+print("   - __init__.py")
+print("   - email_service.py")

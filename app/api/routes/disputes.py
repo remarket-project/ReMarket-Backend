@@ -4,11 +4,10 @@ Dispute API endpoints.
 Allows buyers/sellers to create disputes with evidence.
 """
 import uuid
-from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy.orm import selectinload
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, SessionDep
 from app.core.websocket_manager import ws_manager

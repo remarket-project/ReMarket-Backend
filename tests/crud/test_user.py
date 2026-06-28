@@ -2,10 +2,9 @@ import pytest
 from fastapi.encoders import jsonable_encoder
 from pwdlib.hashers.bcrypt import BcryptHasher
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select
 
+from app.core.security import verify_password
 from app.crud import crud_user
-from app.core.security import verify_password, get_password_hash
 from app.models import User, UserCreate, UserUpdate
 from tests.utils.utils import random_email, random_lower_string
 
@@ -148,11 +147,11 @@ async def test_authenticate_user_with_bcrypt_upgrades_to_argon2(async_db: AsyncS
     assert db_user
     verified, updated_hash = verify_password(password, db_user.password_hash)
     assert verified
-    
+
     # Check that verify_password returned the updated hash (since it was bcrypt)
     assert updated_hash is not None
     assert updated_hash.startswith("$argon2")
-    
+
     # Save the updated hash to db (as done in login flow)
     db_user.password_hash = updated_hash
     async_db.add(db_user)

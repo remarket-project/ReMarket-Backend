@@ -7,8 +7,8 @@ and Stripe Payout withdrawals (for sellers with connected accounts).
 from datetime import datetime, timezone
 from decimal import Decimal
 
-import stripe
 import sqlalchemy
+import stripe
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from slowapi import Limiter

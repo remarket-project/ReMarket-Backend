@@ -3,7 +3,17 @@ import time
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -291,8 +301,8 @@ async def get_listing(
 async def _embed_listing_in_background(listing_id: str) -> None:
     """Generate embedding for a listing in background after response is sent."""
     try:
-        from app.db.session import AsyncSessionLocal
         from app.crud import crud_listing as crud
+        from app.db.session import AsyncSessionLocal
         from app.services.embeddings import embed_listing_full
 
         async with AsyncSessionLocal() as db:
@@ -301,6 +311,7 @@ async def _embed_listing_in_background(listing_id: str) -> None:
                 vec = await embed_listing_full(listing)
                 if vec:
                     from sqlalchemy import update
+
                     from app.models.listing import Listing
 
                     await db.execute(
@@ -576,7 +587,7 @@ async def upload_listing_images_bulk(
         primary_flags[0] = True
 
     new_images: list[ListingImage] = []
-    for i, (file, this_primary) in enumerate(zip(files, primary_flags)):
+    for i, (file, this_primary) in enumerate(zip(files, primary_flags, strict=False)):
         # Validate file
         if file.content_type not in ALLOWED_MIME_TYPES:
             raise HTTPException(

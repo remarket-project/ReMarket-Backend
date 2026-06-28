@@ -6,10 +6,11 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+
 from app.core.config import settings
 from app.services.minio_service import get_minio_service
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy import text
 
 DATABASE_URL = (
     f"postgresql+asyncpg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}"

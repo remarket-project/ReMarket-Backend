@@ -19,7 +19,14 @@ from app.crud import (
     crud_user,
     crud_wallet,
 )
-from app.models.enums import EscrowStatus, ListingStatus, NotificationType, OrderStatus, PaymentMethod, UserRole
+from app.models.enums import (
+    EscrowStatus,
+    ListingStatus,
+    NotificationType,
+    OrderStatus,
+    PaymentMethod,
+    UserRole,
+)
 from app.schemas.order import OrderDirectCreate, OrderRead, OrderStatusUpdate
 from app.services import send_order_completed_email, send_order_created_email
 
@@ -76,7 +83,11 @@ async def create_direct_order(
         db.add(order)
 
     # Geocode coordinates for delivery map
-    from app.services.geocode import build_seller_address, build_shipping_address, geocode_address
+    from app.services.geocode import (
+        build_seller_address,
+        build_shipping_address,
+        geocode_address,
+    )
 
     seller_addr = build_seller_address(listing.location_summary)
     buyer_addr = build_shipping_address(

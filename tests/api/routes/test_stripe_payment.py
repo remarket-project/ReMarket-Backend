@@ -7,8 +7,7 @@ import stripe
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
-from app.utils.currency import vnd_to_usd_cents, usd_cents_to_vnd
-
+from app.utils.currency import usd_cents_to_vnd, vnd_to_usd_cents
 
 # ============================================================================
 # Currency Conversion
@@ -139,7 +138,9 @@ class TestWebhook:
 
     def test_verify_valid_signature(self):
         """Valid signature should return event"""
-        import hmac, hashlib, time
+        import hashlib
+        import hmac
+        import time
         whsec = settings.STRIPE_WEBHOOK_SECRET
         payload = json.dumps({
             "id": "evt_test_1",
@@ -167,7 +168,9 @@ class TestWebhook:
 
     def test_verify_tampered_payload(self):
         """Payload modified after signing should fail"""
-        import hmac, hashlib, time
+        import hashlib
+        import hmac
+        import time
         whsec = settings.STRIPE_WEBHOOK_SECRET
         payload = json.dumps({"id": "evt_test", "type": "payment_intent.succeeded"}).encode()
         ts = int(time.time())

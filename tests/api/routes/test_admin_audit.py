@@ -4,7 +4,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models import User
 from app.models.enums import ListingStatus
 from tests.utils.admin_helper import (
     create_test_category,

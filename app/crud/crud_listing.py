@@ -11,15 +11,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload, selectinload
 
-from app.models.enums import ListingStatus, OrderStatus
+from app.models.chat import ChatConversation
 from app.models.dispute import Dispute, DisputeEvidence
+from app.models.enums import ListingStatus, OrderStatus
 from app.models.escrow import Escrow
 from app.models.listing import Listing, ListingImage
 from app.models.order import Order
 from app.models.order_event import OrderEvent
 from app.models.return_request import ReturnRequest
 from app.models.review import Review
-from app.models.chat import ChatConversation
 from app.services.embeddings import embed_listing_full, embed_listing_text
 
 

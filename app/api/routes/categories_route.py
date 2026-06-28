@@ -5,7 +5,7 @@ Handles product category management (CRUD for admins, retrieval for users).
 """
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import CurrentAdmin, SessionDep
 from app.core.websocket_manager import ws_manager

@@ -24,9 +24,8 @@ from app.core.security import (
     decode_email_verification_token,
     decode_password_reset_token,
     get_password_hash,
-    verify_password,
-    verify_token_hash,
     verify_and_update_password,
+    verify_token_hash,
 )
 from app.crud import crud_user
 from app.models import UserRegister

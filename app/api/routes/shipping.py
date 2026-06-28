@@ -10,7 +10,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, SessionDep

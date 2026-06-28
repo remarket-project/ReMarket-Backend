@@ -12,9 +12,9 @@ from app.models.enums import OrderStatus, PaymentMethod
 if TYPE_CHECKING:
     from app.models.dispute import Dispute
     from app.models.escrow import Escrow
+    from app.models.listing import Listing
     from app.models.order_event import OrderEvent
     from app.models.review import Review
-    from app.models.listing import Listing
     from app.models.user import User
 
 

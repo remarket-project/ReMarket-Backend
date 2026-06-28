@@ -11,11 +11,11 @@ from pydantic import BaseModel
 from sqlalchemy import case, func, select
 
 from app.api.deps import CurrentAdmin, CurrentUser, SessionDep
-from app.core.websocket_manager import ws_manager
 from app.core.security import (
     get_password_hash,
     verify_password,
 )
+from app.core.websocket_manager import ws_manager
 from app.crud import crud_listing, crud_user
 from app.models import UserPrivate, UserPublic, UsersPublic
 from app.models.enums import ListingStatus

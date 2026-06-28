@@ -1,7 +1,6 @@
 """Test helpers for admin API endpoints."""
 import uuid
 from decimal import Decimal
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,7 +51,7 @@ async def create_test_listing(
     seller_id: uuid.UUID,
     category_id: uuid.UUID,
     status: ListingStatus = ListingStatus.PENDING,
-    price: Optional[Decimal] = None,
+    price: Decimal | None = None,
 ) -> Listing:
     title = f"Test Listing {uuid.uuid4().hex[:8]}"
     price_val = price or Decimal("100000.00")
@@ -116,7 +115,6 @@ async def create_test_order_and_escrow(
     listing: Listing,
     escrow_status: EscrowStatus = EscrowStatus.DISPUTED,
 ) -> tuple[Order, Escrow]:
-    from datetime import datetime, timezone
 
     buyer_wallet = await _get_or_create_wallet(db, buyer.id)
     seller_wallet = await _get_or_create_wallet(db, seller.id)

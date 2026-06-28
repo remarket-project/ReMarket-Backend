@@ -8,7 +8,7 @@ from app.models.enums import ConditionGrade, ListingStatus
 
 
 class ListingBase(BaseModel):
-    title: str = Field(..., max_length=500, min_length=5)
+    title: str = Field(..., max_length=500)
     description: str | None = None
     price: Decimal = Field(..., decimal_places=2)
     is_negotiable: bool = True
@@ -17,6 +17,7 @@ class ListingBase(BaseModel):
 
 
 class ListingCreate(ListingBase):
+    title: str = Field(..., max_length=500, min_length=5)
     location_summary: str | None = None
 
 

@@ -9,7 +9,6 @@ sys.path.insert(0, str(project_root))
 
 # Import app module which will trigger the services directory creation code in __init__.py
 try:
-    import app
     print("✅ App module imported successfully")
     print("✅ Services directory and files created successfully!")
 

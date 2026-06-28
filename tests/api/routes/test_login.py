@@ -6,10 +6,13 @@ from pwdlib.hashers.bcrypt import BcryptHasher
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.security import get_password_hash, verify_and_update_password, create_password_reset_token
+from app.core.security import (
+    create_password_reset_token,
+    get_password_hash,
+    verify_and_update_password,
+)
 from app.crud.crud_user import create_user
 from app.models import User, UserCreate
-from tests.utils.user import user_authentication_headers
 from tests.utils.utils import random_email, random_lower_string
 
 

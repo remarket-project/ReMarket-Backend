@@ -1,7 +1,6 @@
 """Background worker: poll GHN for order status updates as fallback."""
 import asyncio
 import logging
-
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select as sa_select

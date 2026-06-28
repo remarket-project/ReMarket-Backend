@@ -241,6 +241,7 @@ class Settings(BaseSettings):
             "oc/mimo-v2.5-free",
             "kr/claude-sonnet-4.5",
             "kr/claude-haiku-4.5",
+            "oc/qwen3.6-plus-free",
             "oc/deepseek-v4-flash-free",
         ],
         description="Danh sách model ưu tiên trên 9Router (OC free trước, Kiro fallback)",

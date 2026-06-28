@@ -11,7 +11,6 @@ from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import CurrentUser, SessionDep
 from app.crud import crud_escrow, crud_order
-from app.models.enums import OrderStatus
 from app.schemas.escrow import EscrowRead
 
 router = APIRouter(prefix="/escrows", tags=["Escrow"])

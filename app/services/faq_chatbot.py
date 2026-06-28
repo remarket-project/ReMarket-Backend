@@ -456,7 +456,7 @@ def _generate_suggested_actions(products: list[dict], answer: str, has_faq: bool
     # Actions based on found products
     if products:
         if len(products) > 1:
-            actions.append({"label": f"🔍 Xem chi tiết sản phẩm đầu tiên", "payload": f"Xem thông tin sản phẩm {products[0]['id']}"})
+            actions.append({"label": "🔍 Xem chi tiết sản phẩm đầu tiên", "payload": f"Xem thông tin sản phẩm {products[0]['id']}"})
             actions.append({"label": "📋 Xem tất cả sản phẩm", "payload": "Tìm sản phẩm tương tự"})
         else:
             actions.append({"label": "🔍 Xem chi tiết", "payload": f"Xem thông tin sản phẩm {products[0]['id']}"})

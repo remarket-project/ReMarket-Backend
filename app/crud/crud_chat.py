@@ -188,8 +188,6 @@ async def get_conversation_latest_messages_batch(
 
     Uses a correlated subquery to get the most recent message per conversation.
     """
-    from sqlalchemy import or_
-    from sqlalchemy.orm import aliased
 
     # Subquery: max created_at per conversation
     subq = (

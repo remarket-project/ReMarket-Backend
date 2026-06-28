@@ -16,12 +16,12 @@ from app.core.config import settings
 from app.crud import crud_offer
 from app.db.init_db import init_db
 from app.db.session import AsyncSessionLocal
-from app.services.order_auto_worker import start_auto_worker, stop_auto_worker
-from app.services.ghn_polling import start_polling
 from app.services.delivery_simulation_worker import (
     start_delivery_simulation_worker,
     stop_delivery_simulation_worker,
 )
+from app.services.ghn_polling import start_polling
+from app.services.order_auto_worker import start_auto_worker, stop_auto_worker
 
 logging.basicConfig(
     level=logging.INFO,
