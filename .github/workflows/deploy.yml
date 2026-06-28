@@ -1,0 +1,34 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: false  # Bật khi đã có VPS: đổi false thành true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/remarket/ReMarket-Backend
+            git pull origin main
+            cd /opt/remarket/ReMarket-Frontend
+            git pull origin main
+            cd /opt/remarket
+            docker compose build backend
+            docker compose build --build-arg VITE_API_URL=${{ vars.VITE_API_URL }} frontend
+            docker compose up -d --no-deps backend
+            docker compose up -d --no-deps frontend
+            docker compose exec -T backend alembic upgrade head
+            sleep 5
+            curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/api/v1/utils/health-check/
