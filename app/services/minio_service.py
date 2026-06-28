@@ -1,8 +1,11 @@
 """MinIO/S3 Object Storage Service"""
 
 import io
+import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from minio import Minio
@@ -54,7 +57,7 @@ class MinIOService:
             }
             self.client.set_bucket_policy(self.bucket_name, json.dumps(policy))
         except S3Error as e:
-            print(f"Error creating/configuring bucket: {e}")
+            logger.exception("Error creating/configuring bucket")
 
     def upload_file(
         self,
@@ -96,7 +99,7 @@ class MinIOService:
             )
             return url
         except S3Error as e:
-            print(f"Error uploading file: {e}")
+            logger.exception("Error uploading file")
             raise
 
     def delete_file(self, file_path: str) -> bool:
@@ -105,7 +108,7 @@ class MinIOService:
             self.client.remove_object(self.bucket_name, file_path)
             return True
         except S3Error as e:
-            print(f"Error deleting file: {e}")
+            logger.exception("Error deleting file")
             return False
 
     def get_presigned_url(
@@ -127,7 +130,7 @@ class MinIOService:
                 expires=expires,
             )
         except S3Error as e:
-            print(f"Error generating URL: {e}")
+            logger.exception("Error generating URL")
             raise
 
 

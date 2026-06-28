@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.models.enums import TransactionType
+from app.models.user import User
 from app.models.wallet import Wallet, WalletTransaction
 from app.utils.currency import usd_cents_to_vnd, vnd_to_usd_cents
 
@@ -182,6 +183,7 @@ async def handle_webhook_event(
         "transfer.created": _handle_transfer_created,
         "payout.paid": _handle_payout_paid,
         "payout.failed": _handle_payout_failed,
+        "account.updated": _handle_account_updated,
     }
 
     handler = handlers.get(event_type)
@@ -381,3 +383,41 @@ async def _handle_payout_failed(
     })
 
     logger.info("Payout failed, refunded: tx %s (payout %s)", tx.id, payout.id)
+
+
+async def _handle_account_updated(
+    account: stripe.Account,
+    db: Any,
+) -> None:
+    """Handle account.updated — sync Stripe Connect onboarding status."""
+    account_id = account.id
+    charges_enabled = account.charges_enabled
+    payouts_enabled = account.payouts_enabled
+    requirements = account.requirements.to_dict() if account.requirements else {}
+    currently_due = requirements.get("currently_due", [])
+    disabled_reason = requirements.get("disabled_reason")
+
+    onboarding_complete = (
+        charges_enabled
+        and payouts_enabled
+        and not currently_due
+        and not disabled_reason
+    )
+
+    result = await db.execute(
+        select(User).where(User.stripe_account_id == account_id)
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        logger.warning("No user found for Stripe account %s", account_id)
+        return
+
+    user.stripe_onboarding_complete = onboarding_complete
+    user.stripe_account_status = "active" if onboarding_complete else "pending"
+    db.add(user)
+    await db.commit()
+
+    logger.info(
+        "Stripe account %s updated for user %s: onboarding=%s, status=%s",
+        account_id, user.id, onboarding_complete, user.stripe_account_status,
+    )

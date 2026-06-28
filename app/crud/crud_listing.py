@@ -21,6 +21,7 @@ from app.models.order_event import OrderEvent
 from app.models.return_request import ReturnRequest
 from app.models.review import Review
 from app.services.embeddings import embed_listing_full, embed_listing_text
+from app.services.location_regions import get_region_keywords
 
 
 def _to_uuid(value: str | uuid.UUID) -> uuid.UUID:
@@ -327,6 +328,7 @@ async def search_listings(
     max_price: float | None = None,
     status: ListingStatus | None = ListingStatus.ACTIVE,
     sort_by: str = "newest",
+    region: str | None = None,
     featured_only: bool = False,
     skip: int = 0,
     limit: int = 100
@@ -393,7 +395,19 @@ async def search_listings(
             "popular": [desc(Listing.view_count), desc(Listing.save_count), desc(Listing.created_at)],  # type: ignore[arg-type]
             "featured": [desc(Listing.is_featured), desc(Listing.published_at), desc(Listing.created_at)],  # type: ignore[arg-type]
         }
-        query = query.order_by(*order_map.get(sort_by, order_map["newest"]))
+        order: list = list(order_map.get(sort_by, order_map["newest"]))
+        region_keywords = get_region_keywords(region) if region else None
+        if region_keywords:
+            region_conditions = [
+                Listing.location_summary.ilike(f"%{kw}%")
+                for kw in region_keywords
+            ]
+            region_case = case(
+                (or_(*region_conditions), 0),
+                else_=1
+            )
+            order.insert(0, region_case)
+        query = query.order_by(*order)
 
     # Count total (with all filters applied)
     count_query = select(func.count()).select_from(Listing)

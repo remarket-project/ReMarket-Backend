@@ -248,7 +248,7 @@ async def create_order(
         "note": note or "",
         "required_note": "CHOXEMHANGKHONGTHU",
         "from_name": settings.PROJECT_NAME,
-        "from_phone": settings.GHN_FROM_WARD_CODE or "0900000000",
+        "from_phone": settings.GHN_FROM_PHONE,
         "from_address": "ReMarket Shop",
         "from_ward_code": settings.GHN_FROM_WARD_CODE,
         "from_district_id": settings.GHN_FROM_DISTRICT_ID,

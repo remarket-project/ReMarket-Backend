@@ -12,6 +12,7 @@ from app.api.routes import (
     escrow,
     faq,
     listings,
+    market_price,
     moderation_log,
     notifications,
     offers,
@@ -100,3 +101,8 @@ api_router.include_router(connect.router)
 # FAQ Chatbot Route
 # ============================================================================
 api_router.include_router(faq.router)
+
+# ============================================================================
+# Market Price Route
+# ============================================================================
+api_router.include_router(market_price.router)

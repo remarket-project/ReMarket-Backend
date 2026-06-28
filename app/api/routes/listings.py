@@ -95,6 +95,7 @@ async def list_listings(
     max_price: float | None = Query(None, ge=0),
     sort_by: Literal["newest", "oldest", "price_asc",
                      "price_desc", "popular", "featured", "relevant"] = "newest",
+    region: str | None = Query(None, description="Ưu tiên khu vực: north, central, south"),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100)
 ):
@@ -109,6 +110,7 @@ async def list_listings(
         max_price=max_price,
         status=ListingStatus.ACTIVE,
         sort_by=sort_by,
+        region=region,
         skip=skip,
         limit=limit
     )
@@ -326,7 +328,7 @@ async def _embed_listing_in_background(listing_id: str) -> None:
 
 @router.post("", response_model=ListingRead, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 @router.post("/", response_model=ListingRead, status_code=status.HTTP_201_CREATED)
-@limiter.limit("10/hour")
+@limiter.limit("30/hour")
 async def create_listing(
     current_user: CurrentUser,
     db: SessionDep,
@@ -367,7 +369,7 @@ async def create_listing(
 
 
 @router.patch("/{listing_id}", response_model=ListingRead)
-@limiter.limit("10/hour")
+@limiter.limit("30/hour")
 async def update_listing(
     current_user: CurrentUser,
     db: SessionDep,

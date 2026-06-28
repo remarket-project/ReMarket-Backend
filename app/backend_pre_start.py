@@ -191,7 +191,7 @@ def main() -> None:
         subprocess.run(
             [sys.executable, "-m", "alembic", "upgrade", "head"],
             check=True,
-            cwd="/app",
+            cwd=Path(__file__).resolve().parent.parent,
         )
         logger.info("Migrations completed successfully!")
     except subprocess.CalledProcessError as e:

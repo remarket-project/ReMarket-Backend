@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
+from pydantic import field_serializer
 from sqlalchemy import Column, DateTime
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -63,6 +64,12 @@ class Listing(ListingBase, table=True):
         default=None,
         sa_column=Column(Vector(384)),
     )
+
+    @field_serializer("embedding")
+    def serialize_embedding(self, value, _info):
+        if value is not None:
+            return value.tolist() if hasattr(value, "tolist") else value
+        return value
 
     # Analytics / metadata
     view_count: int = Field(default=0)

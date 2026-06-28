@@ -38,7 +38,7 @@ from app.schemas.auth import (
     TokenResponse,
     VerifyEmailRequest,
 )
-from app.services.email_service import send_password_reset_email
+from app.services.email_service import send_password_reset_email, send_verify_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 limiter = Limiter(key_func=get_remote_address)
@@ -95,12 +95,12 @@ async def register(request: Request, data: UserRegister, session: SessionDep) ->
     await crud_user.update_user_refresh_token(session, user.id, refresh_token)
 
     # Send verification email (if needed)
-    # TODO: Implement send_verify_email from services
-    # await send_verify_email(
-    #     to_email=user.email,
-    #     full_name=user.full_name,
-    #     verification_token=create_email_verification_token(user.email),
-    # )
+    if settings.REQUIRE_EMAIL_VERIFICATION:
+        await send_verify_email(
+            to_email=user.email,
+            full_name=user.full_name,
+            verification_token=create_email_verification_token(user.email),
+        )
 
     return TokenResponse(
         access_token=access_token,

@@ -6,3 +6,9 @@ app.egg-info
 .coverage
 htmlcov
 .venv
+
+# Security — exclude secrets and local data from Docker image
+.env
+.git
+.gitignore
+uploads/

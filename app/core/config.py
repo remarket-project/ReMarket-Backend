@@ -179,7 +179,7 @@ class Settings(BaseSettings):
 
     # Gemini API (chỉ dùng cho chat)
     GEMINI_API_KEY: str = ""
-    GEMINI_CHAT_MODEL: str = "gemini-2.5-flash-lite"
+    GEMINI_CHAT_MODEL: str = "gemini-2.0-flash"
 
     # Multi-key / Multi-model rotation (xem Plan 09)
     GEMINI_API_KEYS: list[str] = Field(
@@ -188,19 +188,15 @@ class Settings(BaseSettings):
     )
     GEMINI_CHAT_MODELS: list[str] = Field(
         default=[
-            "gemini-3.1-flash-lite",
-            "gemini-2.5-flash",
-            "gemini-3.5-flash",
-            "gemini-3-flash",
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-lite",
         ],
         description="Danh sách models ưu tiên từ cao→thấp",
     )
     GEMINI_RPD_LIMITS: dict[str, int] = Field(
         default={
-            "gemini-3.1-flash-lite": 500,
-            "gemini-2.5-flash": 20,
-            "gemini-3.5-flash": 20,
-            "gemini-3-flash": 20,
+            "gemini-2.0-flash": 1500,
+            "gemini-2.0-flash-lite": 1500,
         },
         description="RPD limit cho từng model (free tier)",
     )
@@ -250,6 +246,15 @@ class Settings(BaseSettings):
     # File Upload
     UPLOAD_DIR: str = "uploads"
 
+    # PayOS payment gateway (optional — keep settings for dead-code safety)
+    PAYOS_API_URL: str = ""
+    PAYOS_CLIENT_ID: str = ""
+    PAYOS_API_KEY: str = ""
+    PAYOS_CHECKSUM_KEY: str = ""
+
+    # GHN sender phone (separate from ward code)
+    GHN_FROM_PHONE: str = "0900000000"
+
     # MinIO Configuration (optional)
     MINIO_ENDPOINT: str | None = None
     MINIO_ACCESS_KEY: str | None = None
@@ -265,9 +270,10 @@ class Settings(BaseSettings):
         return bool(self.MINIO_ENDPOINT and self.MINIO_ACCESS_KEY and self.MINIO_SECRET_KEY)
 
     def _check_default_secret(self, var_name: str, value: str | None) -> None:
-        if value == "changethis":
+        weak_values = {"changethis", "your-super-secret-key-change-this-in-production", "Admin@123"}
+        if value in weak_values or (value and len(value) < 16):
             message = (
-                f'The value of {var_name} is "changethis", '
+                f'The value of {var_name} is too weak, '
                 "for security, please change it, at least for deployments."
             )
             if self.ENVIRONMENT == "local":

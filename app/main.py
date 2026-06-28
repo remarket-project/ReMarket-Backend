@@ -14,7 +14,6 @@ from slowapi.util import get_remote_address
 from app.api.main import api_router
 from app.core.config import settings
 from app.crud import crud_offer
-from app.db.init_db import init_db
 from app.db.session import AsyncSessionLocal
 from app.services.delivery_simulation_worker import (
     start_delivery_simulation_worker,
@@ -61,7 +60,6 @@ async def lifespan(app: FastAPI):
     global offer_expiry_task
 
     # Startup
-    await init_db()
     offer_expiry_task = asyncio.create_task(_offer_expiry_worker())
     start_auto_worker()  # Order auto-complete worker
     start_delivery_simulation_worker()  # Delivery simulation worker
@@ -114,11 +112,10 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # ty
 # GZip compression for responses
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-# CORS - allow all origins (for development convenience)
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    # allow_origins=settings.cors_origins,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept"],
