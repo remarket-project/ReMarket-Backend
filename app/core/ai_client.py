@@ -205,6 +205,7 @@ class AIClient:
 
         # Dùng Gemini API làm Cloud Embedding (0 MB RAM, không cần sentence-transformers)
         if settings.AI_PROVIDER == "gemini":
+            from google.genai import types  # type: ignore[import-untyped]
             api_keys = self._get_api_keys()
             if not api_keys:
                 raise ValueError("GEMINI_API_KEY is not configured for embedding")
@@ -212,11 +213,23 @@ class AIClient:
             client = self._get_gemini_client(api_key)
             
             formatted_texts = [f"{prefix}{t}" for t in texts] if prefix else texts
-            response = await client.aio.models.embed_content(
-                model="text-embedding-004",
-                contents=formatted_texts,
-            )
-            return [emb.values for emb in response.embeddings]
+            
+            # Thử gemini-embedding-2 trước, fallback sang gemini-embedding-001 (khống chế 768 chiều)
+            for model_name in ["gemini-embedding-2", "gemini-embedding-001"]:
+                try:
+                    response = await client.aio.models.embed_content(
+                        model=model_name,
+                        contents=formatted_texts,
+                        config=types.EmbedContentConfig(
+                            output_dimensionality=768
+                        )
+                    )
+                    return [emb.values for emb in response.embeddings]
+                except Exception as e:
+                    logger.warning("Gemini embed failed with %s: %s, trying fallback...", model_name, e)
+                    continue
+            
+            raise RuntimeError("All Gemini embedding models failed")
 
         # Mặc định: Dùng local model (sentence-transformers)
         if prefix:
