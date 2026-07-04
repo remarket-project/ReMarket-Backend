@@ -202,6 +202,23 @@ class AIClient:
     async def embed(self, texts: list[str], prefix: str = "") -> list[list[float]]:
         if not texts:
             return []
+
+        # Dùng Gemini API làm Cloud Embedding (0 MB RAM, không cần sentence-transformers)
+        if settings.AI_PROVIDER == "gemini":
+            api_keys = self._get_api_keys()
+            if not api_keys:
+                raise ValueError("GEMINI_API_KEY is not configured for embedding")
+            api_key = api_keys[0]
+            client = self._get_gemini_client(api_key)
+            
+            formatted_texts = [f"{prefix}{t}" for t in texts] if prefix else texts
+            response = await client.aio.models.embed_content(
+                model="text-embedding-004",
+                contents=formatted_texts,
+            )
+            return [emb.values for emb in response.embeddings]
+
+        # Mặc định: Dùng local model (sentence-transformers)
         if prefix:
             texts = [f"{prefix}{t}" for t in texts]
         model = self._get_local_embed_model()
