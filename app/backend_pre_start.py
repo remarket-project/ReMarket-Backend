@@ -198,6 +198,17 @@ def main() -> None:
         logger.error(f"Migration failed: {e}")
         raise e
 
+    # Step 2.5: Run custom database migrations (adding missing table columns)
+    logger.info("Running custom database migrations...")
+    try:
+        import asyncio
+        from app.db.init_db import init_db as run_custom_migrations
+        asyncio.run(run_custom_migrations())
+        logger.info("Custom migrations completed successfully!")
+    except Exception as e:
+        logger.error(f"Custom migrations failed: {e}")
+        raise e
+
     # Step 3: Seed initial data
     logger.info("Seeding initial data...")
     try:
