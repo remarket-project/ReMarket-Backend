@@ -356,11 +356,10 @@ async def search_listings(
     if max_price is not None:
         base_conditions.append(Listing.price <= max_price)  # type: ignore[arg-type]
 
-    # ── Stage 1: Keyword / exact-match filter ──
-    # In "relevant" mode, rely on vector search for semantic matching
-    # For all other modes, use ILIKE for exact/substring matching
     kw_lower = keyword.lower().strip() if keyword else None
-    if kw_lower and sort_by != "relevant":
+
+    # ── Stage 1: ILIKE keyword filter (always apply when keyword exists) ──
+    if kw_lower:
         keyword_filter = f"%{keyword}%"
         base_conditions.append(
             or_(
@@ -374,7 +373,7 @@ async def search_listings(
     for condition in base_conditions:
         query = query.where(condition)
 
-    # ── Stage 2: Vector / semantic ordering ──
+    # ── Stage 2: Sort order ──
     query_vec = None
     if sort_by == "relevant":
         if kw_lower:
@@ -399,7 +398,7 @@ async def search_listings(
         region_keywords = get_region_keywords(region) if region else None
         if region_keywords:
             region_conditions = [
-                Listing.location_summary.ilike(f"%{kw}%")
+                Listing.location_summary.ilike(f"%{kw}%")  # type: ignore[attr-defined]
                 for kw in region_keywords
             ]
             region_case = case(
@@ -416,29 +415,57 @@ async def search_listings(
     count_result = await db.execute(count_query)
     total = count_result.scalar_one()
 
-    query = query.offset(skip).limit(limit)
+    # ── Fetch enough for re-rank, then manual paginate ──
+    # Fetch skip+limit items so re-rank works across page boundary
+    fetch_limit = skip + limit
+    query = query.limit(fetch_limit)
     result = await db.execute(query)
     items = list(result.scalars().all())
 
-    # ── Stage 2b: Re-rank exact matches to top ──
-    # Priority: exact title match > exact description match > semantic relevance
+    # ── Stage 2b: Re-rank exact matches to top (BEFORE paginate) ──
     if kw_lower:
         items.sort(key=lambda r: (
             0 if kw_lower in r.title.lower() else
             1 if kw_lower in (r.description or "").lower() else 2,
         ))
 
-    # ── Stage 3: Fallback — supplement with category-based results if too few ──
+    # Manual paginate after re-rank
+    items = items[skip:skip + limit]
+
+    # ── Stage 3: Fallback — semantic-only + popular supplement ──
     if len(items) < limit and kw_lower and not category_id:
         existing_ids = {item.id for item in items}
-        fallback = select(Listing).options(selectinload(Listing.seller))  # type: ignore[arg-type]
-        for condition in base_conditions:
-            fallback = fallback.where(condition)
-        fallback = fallback.where(Listing.id.notin_(existing_ids))  # type: ignore[attr-defined]
-        fallback = fallback.order_by(desc(Listing.view_count), desc(Listing.created_at))  # type: ignore[arg-type]
-        fallback = fallback.limit(limit - len(items))
-        fallback_result = await db.execute(fallback)
-        items.extend(list(fallback_result.scalars().all()))
+        # 3a: If ILIKE returned nothing, try pure embedding search
+        if not existing_ids and query_vec:
+            semantic_q = select(Listing).options(selectinload(Listing.seller))  # type: ignore[arg-type]
+            if status:
+                semantic_q = semantic_q.where(Listing.status == status)  # type: ignore[arg-type]
+            if featured_only:
+                semantic_q = semantic_q.where(Listing.is_featured.is_(True))  # type: ignore[arg-type]
+            if seller_id:
+                semantic_q = semantic_q.where(Listing.seller_id == _to_uuid(seller_id))  # type: ignore[arg-type]
+            if min_price is not None:
+                semantic_q = semantic_q.where(Listing.price >= min_price)  # type: ignore[arg-type]
+            if max_price is not None:
+                semantic_q = semantic_q.where(Listing.price <= max_price)  # type: ignore[arg-type]
+            semantic_q = semantic_q.where(Listing.embedding.isnot(None))  # type: ignore[attr-defined]
+            semantic_q = semantic_q.order_by(Listing.embedding.cosine_distance(query_vec))  # type: ignore[attr-defined]
+            semantic_q = semantic_q.limit(limit)
+            semantic_result = await db.execute(semantic_q)
+            for sem_item in list(semantic_result.scalars().all()):
+                if sem_item.id not in existing_ids:
+                    existing_ids.add(sem_item.id)
+                    items.append(sem_item)
+        # 3b: Supplement with popular items if still too few
+        if len(items) < limit:
+            fallback = select(Listing).options(selectinload(Listing.seller))  # type: ignore[arg-type]
+            for condition in base_conditions:
+                fallback = fallback.where(condition)
+            fallback = fallback.where(Listing.id.notin_(existing_ids))  # type: ignore[attr-defined]
+            fallback = fallback.order_by(desc(Listing.view_count), desc(Listing.created_at))  # type: ignore[arg-type]
+            fallback = fallback.limit(limit - len(items))
+            fallback_result = await db.execute(fallback)
+            items.extend(list(fallback_result.scalars().all()))
 
     return items, total
 
@@ -598,7 +625,7 @@ async def get_price_band_summary(
     ]
 
     price_band_cache[cache_key] = result_list
-    return result_list
+    return result_list  # type: ignore[return-value]
 
 
 async def get_listing_image(

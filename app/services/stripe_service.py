@@ -405,7 +405,7 @@ async def _handle_account_updated(
     )
 
     result = await db.execute(
-        select(User).where(User.stripe_account_id == account_id)
+        select(User).where(User.stripe_account_id == account_id)  # type: ignore[arg-type]
     )
     user = result.scalar_one_or_none()
     if not user:

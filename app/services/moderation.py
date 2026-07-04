@@ -69,7 +69,7 @@ async def _image_to_base64(image_url: str) -> str:
     if img.width > MAX_IMAGE_DIM or img.height > MAX_IMAGE_DIM:
         ratio = MAX_IMAGE_DIM / max(img.width, img.height)
         new_size = (int(img.width * ratio), int(img.height * ratio))
-        img = img.resize(new_size, Image.LANCZOS)
+        img = img.resize(new_size, Image.LANCZOS)  # type: ignore[attr-defined]
 
     buf = BytesIO()
     img.save(buf, format="JPEG", quality=JPEG_QUALITY, optimize=True)
@@ -106,7 +106,7 @@ async def moderate_listing(
     last_error: Exception | None = None
     for model in settings.AI_MODERATION_MODELS:
         try:
-            response = await _get_client().chat.completions.create(
+            response = await _get_client().chat.completions.create(  # type: ignore
                 model=model,
                 messages=[
                     {"role": "user", "content": content_parts},
@@ -164,8 +164,8 @@ async def apply_moderation_result(
     async with AsyncSessionLocal() as db:
         listing_result = await db.execute(
             select(Listing)
-            .options(joinedload(Listing.seller), joinedload(Listing.category))
-            .where(Listing.id == _to_uuid(listing_id))
+            .options(joinedload(Listing.seller), joinedload(Listing.category))  # type: ignore[arg-type]
+            .where(Listing.id == _to_uuid(listing_id))  # type: ignore[arg-type]
         )
         listing = listing_result.unique().scalar_one_or_none()
         if not listing:

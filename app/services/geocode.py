@@ -37,7 +37,7 @@ def _normalize_address_for_geocode(address: str) -> str:
     parts = [p.strip() for p in address.split(",") if p.strip()]
     normalized = [_normalize_vn_address(p) for p in parts if p]
     # Deduplicate adjacent identical parts
-    dedup = []
+    dedup: list[str] = []
     for p in normalized:
         if not dedup or p != dedup[-1]:
             dedup.append(p)

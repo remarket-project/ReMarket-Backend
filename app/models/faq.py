@@ -13,5 +13,5 @@ class FaqChunk(SQLModel, table=True):
     answer: str = Field(sa_column=Column(Text, nullable=False))
     embedding: list[float] | None = Field(
         default=None,
-        sa_column=Column(Vector(384)),
+        sa_column=Column(Vector(768)),
     )

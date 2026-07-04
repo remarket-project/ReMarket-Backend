@@ -62,7 +62,7 @@ class Listing(ListingBase, table=True):
     )
     embedding: list[float] | None = Field(
         default=None,
-        sa_column=Column(Vector(384)),
+        sa_column=Column(Vector(768)),
     )
 
     @field_serializer("embedding")

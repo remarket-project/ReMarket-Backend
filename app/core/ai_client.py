@@ -3,6 +3,8 @@ import json
 import logging
 from typing import Any
 
+import httpx
+from openai import AsyncOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.core.config import settings
@@ -18,21 +20,25 @@ class AIClient:
 
     def __init__(self):
         self._gemini_clients: dict[str, Any] = {}
+        self._nine_router_client: AsyncOpenAI | None = None
         self._local_embed_model = None
         self._embed_cache: dict[str, list[float]] = {}
 
-    # ─── Chat (multi-key + multi-model rotation) ─────────────────
+    # ─── Chat (9Router → Gemini → AllModelsExhausted) ────────────
 
     async def chat(
         self,
         messages: list[dict],
         tools: list[dict] | None = None,
     ) -> str:
-        """
-        Chat completion với multi-key + multi-model rotation.
-        Tự động thử các cặp (key, model) cho đến khi thành công.
-        Nếu tất cả đều fail → raise AllModelsExhaustedError.
-        """
+        # 1. Thử 9Router trước (nếu có cấu hình)
+        if settings.NINE_ROUTER_BASE_URL and settings.NINE_ROUTER_CHAT_MODEL:
+            try:
+                return await self._nine_router_chat(messages, tools)
+            except Exception as e:
+                logger.warning("9Router failed: %s — fallback to Gemini", e)
+
+        # 2. Fallback Gemini (multi-key + multi-model rotation)
         api_keys = self._get_api_keys()
         if not api_keys:
             logger.warning("No GEMINI_API_KEYS configured")
@@ -68,6 +74,58 @@ class AIClient:
                     continue
 
         raise AllModelsExhaustedError(last_error)
+
+    # ─── 9Router (OpenAI-compatible) ────────────────────────────
+
+    async def _nine_router_chat(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+    ) -> str:
+        """Gọi 9Router với combo ReMarket_chatbot (Antigravity free models)."""
+        client = self._get_nine_router_client()
+
+        # Convert tools từ Gemini format → OpenAI format
+        openai_tools = None
+        if tools:
+            openai_tools = [{"type": "function", "function": t} for t in tools]
+
+        # Convert messages: model role → assistant role
+        openai_messages = []
+        for msg in messages:
+            role = "assistant" if msg["role"] == "model" else msg["role"]
+            openai_messages.append({"role": role, "content": msg["content"]})
+
+        response = await client.chat.completions.create(  # type: ignore
+            model=settings.NINE_ROUTER_CHAT_MODEL,
+            messages=openai_messages,
+            tools=openai_tools,
+            temperature=0.7,
+            max_tokens=1024,
+        )
+
+        choice = response.choices[0]
+
+        # Tool call → convert về function_call format (tương thích faq_chatbot)
+        if choice.finish_reason == "tool_calls" and choice.message.tool_calls:
+            tc = choice.message.tool_calls[0]
+            return json.dumps({
+                "function_call": {
+                    "name": tc.function.name,
+                    "args": json.loads(tc.function.arguments),
+                }
+            })
+
+        return choice.message.content or ""
+
+    def _get_nine_router_client(self) -> AsyncOpenAI:
+        if self._nine_router_client is None:
+            self._nine_router_client = AsyncOpenAI(
+                base_url=settings.NINE_ROUTER_BASE_URL,
+                api_key=settings.NINE_ROUTER_API_KEY or "sk-9router",
+                timeout=httpx.Timeout(30.0, connect=5.0),
+            )
+        return self._nine_router_client
 
     def _get_api_keys(self) -> list[str]:
         keys = settings.GEMINI_API_KEYS

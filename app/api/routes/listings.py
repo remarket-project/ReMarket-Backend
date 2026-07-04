@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 import uuid
@@ -41,6 +42,8 @@ from app.services.minio_service import get_minio_service
 
 _rec_cache: dict[str, tuple[list, int, float]] = {}
 _REC_CACHE_TTL = 3600
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/listings", tags=["Listings"])
 limiter = Limiter(key_func=get_remote_address)
@@ -517,8 +520,7 @@ async def upload_listing_image(
                 content_type=file.content_type or "application/octet-stream",
             )
         except Exception as e:
-            import traceback
-            traceback.print_exc()
+            logger.exception("Error uploading file to MinIO")
             raise HTTPException(
                 status_code=500, detail=f"Error uploading to MinIO: {str(e)}") from e
     else:

@@ -41,7 +41,7 @@ async def analyze_price(
 ):
     from sqlalchemy import select
 
-    stmt = select(Listing).where(Listing.id == listing_id)
+    stmt = select(Listing).where(Listing.id == listing_id)  # type: ignore[arg-type]
     row = await db.execute(stmt)
     listing = row.scalar_one_or_none()
 

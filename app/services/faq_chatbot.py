@@ -249,7 +249,10 @@ async def _ask_local_rag(question: str) -> dict:
         chunk = result.scalar_one_or_none()
 
     if chunk:
-        distance = _cosine_distance(query_vec, chunk.embedding or [])
+        emb = chunk.embedding
+        if hasattr(emb, "tolist"):
+            emb = emb.tolist()
+        distance = _cosine_distance(query_vec, emb if emb is not None else [])
         similarity = 1.0 - distance
         logger.info("Local RAG match: similarity=%.4f, question=%s", similarity, chunk.question[:50])
 
@@ -336,46 +339,90 @@ async def _execute_search_faq(query: str) -> dict:
 async def _execute_search_products(keyword: str, min_price: float | None = None, max_price: float | None = None) -> dict:
     query_vec = await ai_client.embed_one(keyword, prefix="query: ")
 
-    async with AsyncSessionLocal() as db:
-        query = (
+    seen_ids: set[str] = set()
+
+    def build_base():
+        q = (
             select(Listing)
-            .options(selectinload(Listing.seller), selectinload(Listing.images))
-            .where(Listing.status == ListingStatus.ACTIVE)
+            .options(selectinload(Listing.seller), selectinload(Listing.images))  # type: ignore[arg-type]
+            .where(Listing.status == ListingStatus.ACTIVE)  # type: ignore[arg-type]
         )
-
         if min_price is not None:
-            query = query.where(Listing.price >= min_price)  # type: ignore[arg-type]
+            q = q.where(Listing.price >= min_price)  # type: ignore[arg-type]
         if max_price is not None:
-            query = query.where(Listing.price <= max_price)  # type: ignore[arg-type]
+            q = q.where(Listing.price <= max_price)  # type: ignore[arg-type]
+        return q
 
-        if query_vec:
-            query = query.where(Listing.embedding.isnot(None))  # type: ignore[attr-defined]
-            query = query.order_by(Listing.embedding.cosine_distance(query_vec))  # type: ignore[attr-defined]
-        else:
-            keyword_filter = f"%{keyword}%"
-            query = query.where(
-                Listing.title.ilike(keyword_filter) | Listing.description.ilike(keyword_filter)  # type: ignore[arg-type]
-            )
-            query = query.order_by(Listing.created_at.desc())  # type: ignore[attr-defined]
-
+    async def fetch(query):
         result = await db.execute(query.limit(10))
-        items = result.scalars().all()
+        return result.scalars().all()
 
-    products = []
-    for item in items:
+    def to_product(item):
         primary_img = next((img.image_url for img in (item.images or []) if img.is_primary), None)
         if not primary_img and item.images:
             primary_img = item.images[0].image_url
-        products.append({
+        raw_cond = item.condition_grade or ""
+        clean_cond = raw_cond.replace("ConditionGrade.", "").lower() if "ConditionGrade" in raw_cond else raw_cond.lower()
+        return {
             "id": str(item.id),
             "title": item.title,
             "price": float(item.price) if item.price else 0,
-            "condition": item.condition_grade or "unknown",
+            "condition": clean_cond or "unknown",
             "location": item.location_summary or "",
             "seller": item.seller.full_name if item.seller else "Unknown",
             "image_url": primary_img,
             "created_at": item.created_at.isoformat() if item.created_at else "",
-        })
+        }
+
+    async with AsyncSessionLocal() as db:
+        # ── Phase 1: Exact keyword match (title) + embedding sort ──
+        if keyword:
+            kw_filter = f"%{keyword}%"
+            q1 = build_base()
+            q1 = q1.where(Listing.title.ilike(kw_filter))  # type: ignore[attr-defined]
+            if query_vec:
+                q1 = q1.order_by(Listing.embedding.cosine_distance(query_vec))  # type: ignore[union-attr]
+            else:
+                q1 = q1.order_by(Listing.created_at.desc())  # type: ignore[attr-defined]
+            items1 = await fetch(q1)
+        else:
+            items1 = []
+
+        # ── Phase 2: Description match + embedding sort ──
+        if keyword and len(items1) < 10:
+            kw_filter = f"%{keyword}%"
+            q2 = build_base()
+            q2 = q2.where(Listing.description.ilike(kw_filter))  # type: ignore[union-attr]
+            if query_vec:
+                q2 = q2.order_by(Listing.embedding.cosine_distance(query_vec))  # type: ignore[union-attr]
+            else:
+                q2 = q2.order_by(Listing.created_at.desc())  # type: ignore[attr-defined]
+            items2 = await fetch(q2)
+        else:
+            items2 = []
+
+        # ── Phase 3: Semantic fallback (embedding only, no keyword) ──
+        if not items1 and not items2 and keyword and query_vec:
+            q3 = build_base()
+            q3 = q3.where(Listing.embedding.isnot(None))  # type: ignore[union-attr]
+            q3 = q3.order_by(Listing.embedding.cosine_distance(query_vec))  # type: ignore[union-attr]
+            items3 = await fetch(q3)
+        else:
+            items3 = []
+
+        # ── Phase 4: Recent listings (absolute fallback) ──
+        if not items1 and not items2 and not items3:
+            q4 = build_base().order_by(Listing.created_at.desc())  # type: ignore[attr-defined]
+            items4 = await fetch(q4)
+        else:
+            items4 = []
+
+    # ── Dedup & build result ──
+    products = []
+    for item in items1 + items2 + items3 + items4:
+        if item.id not in seen_ids:
+            seen_ids.add(item.id)
+            products.append(to_product(item))
 
     return {"products": products, "total": len(products)}
 
@@ -389,8 +436,8 @@ async def _execute_get_product_detail(product_id: str) -> dict:
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(Listing)
-            .options(selectinload(Listing.seller), selectinload(Listing.images))
-            .where(Listing.id == uid)
+            .options(selectinload(Listing.seller), selectinload(Listing.images))  # type: ignore[arg-type]
+            .where(Listing.id == uid)  # type: ignore[arg-type]
         )
         item = result.scalar_one_or_none()
 
@@ -401,6 +448,9 @@ async def _execute_get_product_detail(product_id: str) -> dict:
     if not primary_img and item.images:
         primary_img = item.images[0].image_url
 
+    raw_cond = item.condition_grade or ""
+    clean_cond = raw_cond.replace("ConditionGrade.", "").lower() if "ConditionGrade" in raw_cond else raw_cond.lower()
+
     return {
         "found": True,
         "product": {
@@ -408,7 +458,7 @@ async def _execute_get_product_detail(product_id: str) -> dict:
             "title": item.title,
             "price": float(item.price) if item.price else 0,
             "description": (item.description or "")[:500],
-            "condition": item.condition_grade or "unknown",
+            "condition": clean_cond or "unknown",
             "location": item.location_summary or "",
             "seller": item.seller.full_name if item.seller else "Unknown",
             "image_url": primary_img,
@@ -424,9 +474,9 @@ async def _execute_get_trending_products() -> dict:
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(Listing)
-            .options(selectinload(Listing.seller), selectinload(Listing.images))
-            .where(Listing.status == ListingStatus.ACTIVE, Listing.created_at >= cutoff)
-            .order_by(Listing.view_count.desc())
+            .options(selectinload(Listing.seller), selectinload(Listing.images))  # type: ignore[arg-type]
+            .where(Listing.status == ListingStatus.ACTIVE, Listing.created_at >= cutoff)  # type: ignore[arg-type]
+            .order_by(Listing.view_count.desc())  # type: ignore[attr-defined]
             .limit(10)
         )
         items = result.scalars().all()
@@ -436,11 +486,13 @@ async def _execute_get_trending_products() -> dict:
         primary_img = next((img.image_url for img in (item.images or []) if img.is_primary), None)
         if not primary_img and item.images:
             primary_img = item.images[0].image_url
+        raw_cond = item.condition_grade or ""
+        clean_cond = raw_cond.replace("ConditionGrade.", "").lower() if "ConditionGrade" in raw_cond else raw_cond.lower()
         products.append({
             "id": str(item.id),
             "title": item.title,
             "price": float(item.price) if item.price else 0,
-            "condition": item.condition_grade or "unknown",
+            "condition": clean_cond or "unknown",
             "location": item.location_summary or "",
             "views": item.view_count or 0,
             "seller": item.seller.full_name if item.seller else "Unknown",

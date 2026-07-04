@@ -401,6 +401,8 @@ async def admin_ship_order(
         raise HTTPException(status_code=400, detail=f"Cannot ship order with status {order.status}")
 
     updated = await crud_order.update_order_status(db, order_id, OrderStatus.SHIPPING)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Order not found")
 
     # Clear auto-ship timer, set auto-deliver timer (admin chu dong ship)
     updated.auto_ship_at = None
@@ -664,8 +666,8 @@ async def _moderate_all_pending():
         async with AsyncSessionLocal() as db:
             result = await db.execute(
                 select(Listing)
-                .options(joinedload(Listing.category))
-                .where(Listing.status == ListingStatus.PENDING)
+                .options(joinedload(Listing.category))  # type: ignore[arg-type]
+                .where(Listing.status == ListingStatus.PENDING)  # type: ignore[arg-type]
             )
             listings = list(result.unique().scalars().all())
             if not listings:

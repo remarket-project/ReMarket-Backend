@@ -10,7 +10,7 @@ def now() -> datetime:
 
 
 class ModerationLog(SQLModel, table=True):
-    __tablename__ = "moderation_logs"
+    __tablename__ = "moderation_logs"  # type: ignore
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     listing_id: uuid.UUID = Field(foreign_key="listings.id", index=True)

@@ -101,18 +101,18 @@ async def _query_similar_listings(
         query_vec = await embed_listing_text(query_text)
         q = (
             select(Listing)
-            .options(selectinload(Listing.seller))
+            .options(selectinload(Listing.seller))  # type: ignore[arg-type]
             .where(
-                Listing.status == ListingStatus.ACTIVE,
-                Listing.embedding.isnot(None),
+                Listing.status == ListingStatus.ACTIVE,  # type: ignore[arg-type]
+                Listing.embedding.isnot(None),  # type: ignore[union-attr]
             )
         )
         if condition_grade:
-            q = q.where(Listing.condition_grade == condition_grade)
+            q = q.where(Listing.condition_grade == condition_grade)  # type: ignore[arg-type]
         if exclude_listing_id:
-            q = q.where(Listing.id != exclude_listing_id)
+            q = q.where(Listing.id != exclude_listing_id)  # type: ignore[arg-type]
 
-        q = q.order_by(Listing.embedding.cosine_distance(query_vec)).limit(limit)
+        q = q.order_by(Listing.embedding.cosine_distance(query_vec)).limit(limit)  # type: ignore[union-attr]
 
         result = await db.execute(q)
         listings = list(result.scalars().all())
@@ -142,12 +142,12 @@ async def _query_price_stats(
         func.avg(Listing.price),
         func.min(Listing.price),
         func.max(Listing.price),
-        func.count(Listing.id),
-    ).where(Listing.status == ListingStatus.ACTIVE)
+        func.count(Listing.id),  # type: ignore[arg-type]
+    ).where(Listing.status == ListingStatus.ACTIVE)  # type: ignore[arg-type]
     if category_id:
-        query = query.where(Listing.category_id == category_id)
+        query = query.where(Listing.category_id == category_id)  # type: ignore[arg-type]
     if condition_grade:
-        query = query.where(Listing.condition_grade == condition_grade)
+        query = query.where(Listing.condition_grade == condition_grade)  # type: ignore[arg-type]
 
     result = await db.execute(query)
     row = result.one()
@@ -159,10 +159,10 @@ async def _query_price_stats(
             func.avg(Listing.price),
             func.min(Listing.price),
             func.max(Listing.price),
-            func.count(Listing.id),
-        ).where(Listing.status == ListingStatus.ACTIVE)
+            func.count(Listing.id),  # type: ignore[arg-type]
+        ).where(Listing.status == ListingStatus.ACTIVE)  # type: ignore[arg-type]
         if category_id:
-            query2 = query2.where(Listing.category_id == category_id)
+            query2 = query2.where(Listing.category_id == category_id)  # type: ignore[arg-type]
 
         result2 = await db.execute(query2)
         row2 = result2.one()
@@ -191,7 +191,7 @@ async def _query_price_stats(
 
 
 async def _get_category_name(db: Any, category_id: uuid.UUID | str) -> str:
-    result = await db.execute(select(Category.name).where(Category.id == category_id))
+    result = await db.execute(select(Category.name).where(Category.id == category_id))  # type: ignore[arg-type]
     row = result.scalar_one_or_none()
     return row or "Không xác định"
 

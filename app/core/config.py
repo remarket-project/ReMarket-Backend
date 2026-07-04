@@ -175,7 +175,7 @@ class Settings(BaseSettings):
 
     # ─── AI / Embedding ───
     AI_PROVIDER: str = "local"
-    AI_EMBED_DIM: int = 384
+    AI_EMBED_DIM: int = 768
 
     # Gemini API (chỉ dùng cho chat)
     GEMINI_API_KEY: str = ""
@@ -211,7 +211,7 @@ class Settings(BaseSettings):
     OPENAI_EMBED_MODEL: str = "text-embedding-3-small"
 
     # Local embedding
-    LOCAL_EMBED_MODEL: str = "intfloat/multilingual-e5-small"
+    LOCAL_EMBED_MODEL: str = "intfloat/multilingual-e5-base"
 
     # Rate limit
     AI_MAX_RETRIES: int = 2
@@ -241,6 +241,12 @@ class Settings(BaseSettings):
             "oc/deepseek-v4-flash-free",
         ],
         description="Danh sách model ưu tiên trên 9Router (OC free trước, Kiro fallback)",
+    )
+
+    # ─── 9Router Chatbot ─────────────────────────────
+    NINE_ROUTER_CHAT_MODEL: str = Field(
+        default="ReMarket_chatbot",
+        description="Combo 9Router cho chatbot (Antigravity free models)",
     )
 
     # File Upload

@@ -1,5 +1,6 @@
 """CRUD helpers for AI moderation logs."""
 import uuid
+from typing import Any
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,7 +37,7 @@ async def get_moderation_logs(
     limit: int = 50,
     decision: str | None = None,
 ) -> tuple[list[ModerationLog], int]:
-    conditions = []
+    conditions: list[Any] = []
     if decision:
         conditions.append(ModerationLog.decision == decision)
 
@@ -49,6 +50,6 @@ async def get_moderation_logs(
 
     total = (await db.execute(count_query)).scalar_one()
     result = await db.execute(
-        query.order_by(desc(ModerationLog.created_at)).offset(skip).limit(limit)
+        query.order_by(desc(ModerationLog.created_at)).offset(skip).limit(limit)  # type: ignore[arg-type]
     )
     return list(result.scalars().all()), total

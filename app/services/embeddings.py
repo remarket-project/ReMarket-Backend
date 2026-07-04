@@ -4,7 +4,7 @@ from app.core.ai_client import ai_client
 
 logger = logging.getLogger(__name__)
 
-EMBED_DIM = 384
+EMBED_DIM = 768
 
 
 async def embed_listing_text(text: str) -> list[float]:

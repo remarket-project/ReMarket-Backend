@@ -1,5 +1,6 @@
 from app.core.db import engine
-from sqlmodel import Session, text
+from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 with Session(engine) as sess:
     rows = sess.execute(text("""
