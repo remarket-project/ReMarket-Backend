@@ -25,7 +25,8 @@ router = APIRouter(prefix="/payment", tags=["Payment"])
 
 
 class DepositRequest(BaseModel):
-    amount: int = Field(..., ge=10000, le=50000000, description="Amount in VND")
+    amount: int = Field(..., ge=10000, le=50000000,
+                        description="Amount in VND")
 
 
 class DepositResponse(BaseModel):
@@ -34,9 +35,18 @@ class DepositResponse(BaseModel):
     amount: int
 
 
+class ConfirmDepositRequest(BaseModel):
+    payment_intent_id: str
+
+
+class ConfirmDepositResponse(BaseModel):
+    payment_intent_id: str
+    status: str
+    message: str
+
+
 class StripeConfigResponse(BaseModel):
     publishable_key: str
-
 
 
 # ============================================================================
@@ -91,6 +101,48 @@ async def create_deposit(
     )
 
 
+@router.post("/confirm-deposit", response_model=ConfirmDepositResponse)
+async def confirm_deposit(
+    current_user: CurrentUser,
+    db: SessionDep,
+    data: ConfirmDepositRequest,
+):
+    """Finalize a deposit after Stripe confirms success.
+
+    This is an idempotent fallback for cases where the webhook is delayed
+    or not delivered yet. If the transaction is already completed, the
+    handler exits without double-crediting the wallet.
+    """
+    payment_intent = await stripe_service.retrieve_payment_intent(data.payment_intent_id)
+    metadata = payment_intent.metadata or {}
+    metadata_user_id = None
+    if isinstance(metadata, dict):
+        metadata_user_id = metadata.get("user_id")
+    elif hasattr(metadata, "to_dict"):
+        metadata_user_id = metadata.to_dict().get("user_id")
+    else:
+        metadata_user_id = getattr(metadata, "user_id", None)
+
+    if metadata_user_id and str(metadata_user_id) != str(current_user.id):
+        raise HTTPException(
+            status_code=403, detail="Không có quyền xác nhận giao dịch này")
+
+    if payment_intent.status != "succeeded":
+        return ConfirmDepositResponse(
+            payment_intent_id=data.payment_intent_id,
+            status=payment_intent.status,
+            message="PaymentIntent chưa ở trạng thái succeeded",
+        )
+
+    await stripe_service._handle_payment_succeeded(payment_intent, db)
+
+    return ConfirmDepositResponse(
+        payment_intent_id=data.payment_intent_id,
+        status="succeeded",
+        message="Nạp tiền đã được đồng bộ vào ví",
+    )
+
+
 # ============================================================================
 # Stripe Webhook
 # ============================================================================
@@ -105,14 +157,16 @@ async def stripe_webhook(
     sig_header = request.headers.get("stripe-signature")
 
     if not sig_header:
-        raise HTTPException(status_code=400, detail="Missing stripe-signature header")
+        raise HTTPException(
+            status_code=400, detail="Missing stripe-signature header")
 
     event = await stripe_service.verify_webhook_signature(
         payload=payload,
         sig_header=sig_header,
     )
     if event is None:
-        raise HTTPException(status_code=400, detail="Invalid webhook signature")
+        raise HTTPException(
+            status_code=400, detail="Invalid webhook signature")
 
     from app.db.session import AsyncSessionLocal
 
