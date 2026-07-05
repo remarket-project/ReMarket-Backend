@@ -34,9 +34,21 @@ class DepositResponse(BaseModel):
     amount: int
 
 
+class StripeConfigResponse(BaseModel):
+    publishable_key: str
+
+
+
 # ============================================================================
 # Stripe Deposit (Topup)
 # ============================================================================
+
+
+@router.get("/config", response_model=StripeConfigResponse)
+async def get_stripe_config():
+    """Return Stripe publishable key to frontend dynamically."""
+    from app.core.config import settings
+    return StripeConfigResponse(publishable_key=settings.STRIPE_PUBLISHABLE_KEY)
 
 
 @router.post("/create-deposit", response_model=DepositResponse)
