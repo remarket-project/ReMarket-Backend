@@ -114,7 +114,7 @@ async def confirm_deposit(
     handler exits without double-crediting the wallet.
     """
     payment_intent = await stripe_service.retrieve_payment_intent(data.payment_intent_id)
-    metadata = payment_intent.metadata or {}
+    metadata = getattr(payment_intent, "metadata", None) or {}
     metadata_user_id = None
     if isinstance(metadata, dict):
         metadata_user_id = metadata.get("user_id")
