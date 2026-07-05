@@ -334,6 +334,9 @@ services:
     build:
       context: ./ReMarket-Frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+        VITE_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
     container_name: remarket-frontend
     profiles: ["frontend"]
     restart: always
@@ -341,8 +344,6 @@ services:
       - backend
     ports:
       - "5173:80"
-    environment:
-      VITE_API_URL: ${VITE_API_URL}
     volumes:
       - ./ReMarket-Frontend:/app
     develop:

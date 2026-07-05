@@ -172,6 +172,18 @@ async def confirm_return_received(
                 seller_wallet.balance -= req.return_fee
                 db.add(seller_wallet)
 
+        # Reset listing status to ACTIVE
+        from sqlalchemy import select
+        from app.models.listing import Listing
+        from app.models.enums import ListingStatus
+        listing_result = await db.execute(
+            select(Listing).where(Listing.id == order.listing_id).with_for_update()  # type: ignore[arg-type]
+        )
+        listing = listing_result.scalar_one_or_none()
+        if listing:
+            listing.status = ListingStatus.ACTIVE
+            db.add(listing)
+
         order.status = OrderStatus.RETURNED  # type: ignore[assignment]
         db.add(order)
 
