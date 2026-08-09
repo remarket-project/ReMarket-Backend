@@ -5,6 +5,7 @@ Handles listing creation, retrieval, updates, and searches with image handling.
 """
 import uuid
 from datetime import datetime, timezone
+from typing import cast
 
 from sqlalchemy import asc, case, delete, desc, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,10 +17,12 @@ from app.models.dispute import Dispute, DisputeEvidence
 from app.models.enums import ListingStatus, OrderStatus
 from app.models.escrow import Escrow
 from app.models.listing import Listing, ListingImage
+from app.models.moderation_log import ModerationLog
 from app.models.order import Order
 from app.models.order_event import OrderEvent
 from app.models.return_request import ReturnRequest
 from app.models.review import Review
+from app.models.saved_follow import SavedListing
 from app.services.embeddings import embed_listing_full, embed_listing_text
 from app.services.location_regions import get_region_keywords
 
@@ -58,7 +61,7 @@ async def create_listing(
     db.add(db_obj)
     await db.commit()
     await db.refresh(db_obj)
-    return db_obj
+    return cast(Listing, db_obj)
 
 
 async def get_listing(db: AsyncSession, listing_id: str) -> Listing | None:
@@ -132,7 +135,7 @@ async def add_listing_image(
     db.add(db_img)
     await db.commit()
     await db.refresh(db_img)
-    return db_img
+    return cast(ListingImage, db_img)
 
 
 async def update_listing(
@@ -310,6 +313,14 @@ async def hard_delete_listing(db: AsyncSession, listing_id: str) -> None:
         update(ChatConversation)
         .where(ChatConversation.listing_id == listing_uuid)  # type: ignore[arg-type]
         .values(listing_id=None)
+    )
+    # 9. delete saved_listings
+    await db.execute(
+        delete(SavedListing).where(SavedListing.listing_id == listing_uuid)  # type: ignore[arg-type]
+    )
+    # 10. delete moderation_logs
+    await db.execute(
+        delete(ModerationLog).where(ModerationLog.listing_id == listing_uuid)  # type: ignore[arg-type]
     )
     await db.flush()
 
@@ -585,7 +596,7 @@ async def get_price_band_summary(
 
     cache_key = f"price_bands_{category_id or 'all'}"
     if cached := price_band_cache.get(cache_key):
-        return cached
+        return cast(list[dict[str, object]], cached)
 
     base_filters = [Listing.status == ListingStatus.ACTIVE]  # type: ignore[arg-type]
     if category_id:
