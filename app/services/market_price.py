@@ -62,7 +62,7 @@ def _cache_get(cache: dict, key: str, ttl: int) -> Any | None:
     if entry:
         age = (datetime.now(timezone.utc) - entry["ts"]).total_seconds()
         if age < ttl:
-            return entry["data"]
+            return entry["data"]  # type: ignore[no-any-return]
     return None
 
 
@@ -201,11 +201,11 @@ async def _get_category_name(db: Any, category_id: uuid.UUID | str) -> str:
 # ---------------------------------------------------------------------------
 
 _PRIMARY_MODEL = "oc/deepseek-v4-flash-free"
-_FALLBACK_MODEL = "oc/deepseek-v4-flash-free"
+_FALLBACK_MODEL = "oc/nemotron-3.5-lightning-free"
 
 
 async def _call_ai(prompt: str, system_prompt: str) -> str | None:
-    for model in [_PRIMARY_MODEL, _FALLBACK_MODEL]:
+    for model in [_PRIMARY_MODEL, _FALLBACK_MODEL, "ReMarket_chatbot"]:
         try:
             client = _get_client()
             resp = await client.chat.completions.create(
@@ -216,11 +216,16 @@ async def _call_ai(prompt: str, system_prompt: str) -> str | None:
                 ],
                 temperature=0.3,
                 max_tokens=1024,
-                response_format={"type": "json_object"},
             )
             content = resp.choices[0].message.content
             if content:
-                return content
+                cleaned = content.strip()
+                cleaned = cleaned.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+                start = cleaned.find("{")
+                end = cleaned.rfind("}")
+                if start != -1 and end != -1 and end > start:
+                    cleaned = cleaned[start : end + 1]
+                return cleaned
         except Exception as e:
             logger.warning("Model %s failed: %s", model, e)
             continue
@@ -343,7 +348,7 @@ async def get_price_suggestion(
     cache_key = f"suggest:{category_id}:{condition_grade.value}:{title.lower().strip()[:50]}"
     cached = _cache_get(_suggestion_cache, cache_key, _CACHE_TTL_SUGGESTION)
     if cached:
-        return cached
+        return cached  # type: ignore[no-any-return]
 
     condition_label = _CONDITION_LABELS.get(condition_grade, condition_grade.value)
     category_name = await _get_category_name(db, category_id)
@@ -397,7 +402,7 @@ async def get_market_analysis(
     cache_key = f"analysis:{listing_id}"
     cached = _cache_get(_analysis_cache, cache_key, _CACHE_TTL_ANALYSIS)
     if cached:
-        return cached
+        return cached  # type: ignore[no-any-return]
 
     title = listing.title
     listing_price = float(listing.price)

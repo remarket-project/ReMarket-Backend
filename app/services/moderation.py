@@ -111,7 +111,6 @@ async def moderate_listing(
                 messages=[
                     {"role": "user", "content": content_parts},
                 ],
-                response_format={"type": "json_object"},
                 max_tokens=120,
                 temperature=0.1,
             )
