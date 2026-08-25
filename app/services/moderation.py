@@ -137,6 +137,10 @@ def _parse_response(raw: str | None) -> ModerationResult | None:
         cleaned = raw.strip()
         cleaned = cleaned.removeprefix("```json").removeprefix("```")
         cleaned = cleaned.removesuffix("```").strip()
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            cleaned = cleaned[start : end + 1]
         data = json.loads(cleaned)
         decision = data.get("decision", "flag")
         reason = data.get("reason", "")
