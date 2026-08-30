@@ -233,18 +233,17 @@ class AIClient:
 
         # Mặc định: Dùng local model (sentence-transformers)
         try:
+            model = self._get_local_embed_model()
+            if model is None:
+                return []
             if prefix:
                 texts = [f"{prefix}{t}" for t in texts]
-            model = self._get_local_embed_model()
             loop = asyncio.get_running_loop()
             embeddings = await loop.run_in_executor(
                 None,
                 lambda: model.encode(texts, show_progress_bar=False, normalize_embeddings=True).tolist(),
             )
             return embeddings  # type: ignore[no-any-return]
-        except (ModuleNotFoundError, ImportError) as e:
-            logger.warning("sentence-transformers not installed; local embedding unavailable")
-            return []
         except Exception as e:
             logger.warning("Local embedding generation failed: %s", e)
             return []
@@ -268,12 +267,12 @@ class AIClient:
                 )
                 logger.info("Loading embed model: %s", settings.LOCAL_EMBED_MODEL)
                 self._local_embed_model = SentenceTransformer(settings.LOCAL_EMBED_MODEL)
-            except ImportError:
+            except (ImportError, ModuleNotFoundError):
                 logger.warning("sentence-transformers not installed; local embedding unavailable")
-                raise
+                return None
             except Exception as e:
-                logger.critical("Failed to load embedding model '%s': %s", settings.LOCAL_EMBED_MODEL, e)
-                raise
+                logger.error("Failed to load embed model %s: %s", settings.LOCAL_EMBED_MODEL, e)
+                return None
         return self._local_embed_model
 
 
