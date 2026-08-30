@@ -200,12 +200,12 @@ async def _get_category_name(db: Any, category_id: uuid.UUID | str) -> str:
 # AI call with fallback chain
 # ---------------------------------------------------------------------------
 
-_PRIMARY_MODEL = "oc/deepseek-v4-flash-free"
+_PRIMARY_MODEL = "ReMarket_chatbot"
 _FALLBACK_MODEL = "oc/nemotron-3.5-lightning-free"
 
 
 async def _call_ai(prompt: str, system_prompt: str) -> str | None:
-    for model in [_PRIMARY_MODEL, _FALLBACK_MODEL, "ReMarket_chatbot"]:
+    for model in [_PRIMARY_MODEL, _FALLBACK_MODEL, "oc/deepseek-v4-flash-free"]:
         try:
             client = _get_client()
             resp = await client.chat.completions.create(
