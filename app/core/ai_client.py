@@ -187,7 +187,7 @@ class AIClient:
                     }
                 })
 
-        return response.text
+        return str(response.text or "")
 
     def _get_gemini_client(self, api_key: str):
         if api_key not in self._gemini_clients:
@@ -232,15 +232,22 @@ class AIClient:
             raise RuntimeError("All Gemini embedding models failed")
 
         # Mặc định: Dùng local model (sentence-transformers)
-        if prefix:
-            texts = [f"{prefix}{t}" for t in texts]
-        model = self._get_local_embed_model()
-        loop = asyncio.get_running_loop()
-        embeddings = await loop.run_in_executor(
-            None,
-            lambda: model.encode(texts, show_progress_bar=False, normalize_embeddings=True).tolist(),
-        )
-        return embeddings
+        try:
+            if prefix:
+                texts = [f"{prefix}{t}" for t in texts]
+            model = self._get_local_embed_model()
+            loop = asyncio.get_running_loop()
+            embeddings = await loop.run_in_executor(
+                None,
+                lambda: model.encode(texts, show_progress_bar=False, normalize_embeddings=True).tolist(),
+            )
+            return embeddings  # type: ignore[no-any-return]
+        except (ModuleNotFoundError, ImportError) as e:
+            logger.warning("sentence-transformers not installed; local embedding unavailable")
+            return []
+        except Exception as e:
+            logger.warning("Local embedding generation failed: %s", e)
+            return []
 
     async def embed_one(self, text: str, prefix: str = "") -> list[float]:
         cache_key = f"{prefix}|{text}" if prefix else text
