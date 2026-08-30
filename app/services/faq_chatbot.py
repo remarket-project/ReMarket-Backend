@@ -314,17 +314,27 @@ def _fallback_greeting(question: str) -> dict:
 # ─── Tool execution ──────────────────────────────────────────────
 
 async def _execute_search_faq(query: str) -> dict:
-    query_vec = await ai_client.embed_one(query, prefix="query: ")
-    if not query_vec:
-        return {"found": False}
+    try:
+        query_vec = await ai_client.embed_one(query, prefix="query: ")
+    except Exception as e:
+        logger.warning("Embedding search unavailable for FAQ, falling back to SQL: %s", e)
+        query_vec = None
 
     async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(FaqChunk)
-            .where(FaqChunk.embedding.isnot(None))  # type: ignore[attr-defined]
-            .order_by(FaqChunk.embedding.cosine_distance(query_vec))  # type: ignore[attr-defined]
-            .limit(1)
-        )
+        if query_vec:
+            result = await db.execute(
+                select(FaqChunk)
+                .where(FaqChunk.embedding.isnot(None))  # type: ignore[attr-defined]
+                .order_by(FaqChunk.embedding.cosine_distance(query_vec))  # type: ignore[attr-defined]
+                .limit(1)
+            )
+        else:
+            kw = f"%{query}%"
+            result = await db.execute(
+                select(FaqChunk)
+                .where((FaqChunk.question.ilike(kw)) | (FaqChunk.answer.ilike(kw)))  # type: ignore[attr-defined]
+                .limit(1)
+            )
         chunk = result.scalar_one_or_none()
 
     if chunk:
@@ -337,7 +347,11 @@ async def _execute_search_faq(query: str) -> dict:
 
 
 async def _execute_search_products(keyword: str, min_price: float | None = None, max_price: float | None = None) -> dict:
-    query_vec = await ai_client.embed_one(keyword, prefix="query: ")
+    try:
+        query_vec = await ai_client.embed_one(keyword, prefix="query: ")
+    except Exception as e:
+        logger.warning("Embedding search unavailable for products, falling back to SQL ILIKE: %s", e)
+        query_vec = None
 
     seen_ids: set[str] = set()
 
