@@ -205,7 +205,7 @@ _FALLBACK_MODEL = "oc/nemotron-3.5-lightning-free"
 
 
 async def _call_ai(prompt: str, system_prompt: str) -> str | None:
-    for model in [_PRIMARY_MODEL, _FALLBACK_MODEL, "oc/deepseek-v4-flash-free"]:
+    for model in [_PRIMARY_MODEL, _FALLBACK_MODEL, "oc/qwen3.6-plus-free"]:
         try:
             client = _get_client()
             resp = await client.chat.completions.create(
