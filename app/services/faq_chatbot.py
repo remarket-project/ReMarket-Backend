@@ -201,17 +201,35 @@ async def _ask_gemini(question: str, history: list[dict] | None) -> dict:
             found_products.append(result["product"])
         elif fc["name"] == "search_faq" and result.get("found"):
             found_faq_answer = result.get("answer")
+            # Trả về câu trả lời FAQ trực tiếp từ DB — Không cần gọi LLM lần 2 làm rỗng câu trả lời
+            suggested = _generate_suggested_actions([], found_faq_answer, True)
+            return {
+                "answer": found_faq_answer,
+                "products": [],
+                "suggested_actions": suggested,
+                "source": "faq_db",
+                "mode": "gemini",
+            }
 
         messages.append({"role": "model", "content": raw_response})
-        messages.append({"role": "user", "content": json.dumps(result, ensure_ascii=False)})
+        messages.append({
+            "role": "user", 
+            "content": f"Kết quả tra cứu: {json.dumps(result, ensure_ascii=False)}. Hãy tổng hợp câu trả lời thân thiện, ngắn gọn cho người dùng."
+        })
 
     try:
         final_answer = await ai_client.chat(messages)
-    except AllModelsExhaustedError:
-        raise
     except Exception as e:
         logger.error("Gemini final chat failed: %s", e)
-        raise AllModelsExhaustedError(str(e))
+        final_answer = ""
+
+    if not final_answer or not final_answer.strip():
+        if found_faq_answer:
+            final_answer = found_faq_answer
+        elif found_products:
+            final_answer = f"Dưới đây là {len(found_products)} sản phẩm phù hợp với tìm kiếm của bạn trên ReMarket:"
+        else:
+            final_answer = "Xin lỗi, hiện tại mình chưa tìm thấy thông tin phù hợp cho câu hỏi này. Bạn có thể thử tra cứu quy trình đăng tin hoặc tìm kiếm sản phẩm khác nhé!"
 
     # Generate suggested actions based on context
     suggested_actions = _generate_suggested_actions(found_products, final_answer, bool(found_faq_answer))
