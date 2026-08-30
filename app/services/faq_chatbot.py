@@ -200,7 +200,7 @@ async def _ask_gemini(question: str, history: list[dict] | None) -> dict:
         elif fc["name"] == "get_product_detail" and result.get("found"):
             found_products.append(result["product"])
         elif fc["name"] == "search_faq" and result.get("found"):
-            found_faq_answer = result.get("answer")
+            found_faq_answer = str(result.get("answer") or "")
             # Trả về câu trả lời FAQ trực tiếp từ DB — Không cần gọi LLM lần 2 làm rỗng câu trả lời
             suggested = _generate_suggested_actions([], found_faq_answer, True)
             return {
